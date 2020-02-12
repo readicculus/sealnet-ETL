@@ -8,9 +8,8 @@ from botocore.exceptions import ClientError
 from sqlalchemy import create_engine
 
 from noaadb import DATABASE_URI, Session, queries
-from noaadb.models import Images
-
-
+from noaadb.models import Images, LabelEntry, Workers, Jobs, Species
+from noaadb.queries import species_exists
 
 LOCAL_S3 = "/data/raw_data/PolarBears/s3_images/"
 s3_client = boto3.client('s3')
@@ -48,10 +47,10 @@ for i, row in pb_df.iterrows():
     fog = vals[8]
     thermal_x = vals[9]
     thermal_y = vals[10]
-    l = vals[11]
-    t = vals[12]
-    r = vals[13]
-    b = vals[14]
+    x1 = vals[11]
+    y1 = vals[12]
+    x2 = vals[13]
+    y2 = vals[14]
     l_u = vals[15]
     t_u = vals[16]
     r_u = vals[17]
@@ -106,8 +105,7 @@ for i, row in pb_df.iterrows():
     s = Session()
     # Insert image if they don't already exist in table
 
-
-
+    rgb_db_obj=None
     if not queries.image_exists(s, rgb_image_name):
         rgb_db_obj = Images(
             file_name=rgb_image_name,
@@ -119,7 +117,7 @@ for i, row in pb_df.iterrows():
             depth=rgb_im.layers,
         )
         s.add(rgb_db_obj)
-
+    ir_db_obj= None
     if not queries.image_exists(s, ir_image_name):
         ir_db_obj = Images(
             file_name=ir_image_name,
@@ -132,6 +130,37 @@ for i, row in pb_df.iterrows():
         )
         s.add(ir_db_obj)
 
+    s.flush()
+    worker = Workers(
+        name="yuval",
+        human=True
+    )
+
+    j = Jobs(
+        job_name="original_polarbear_labels",
+        path="",
+        notes=""
+    )
+
+    if not species_exists(s, species_id):
+        species_row = Species(name=species_id)
+        s.add(species_row)
+    LabelEntry(
+        image = (ir_db_obj.id if ir_db_obj else None),
+        species = s.id,
+        x1 = x1, # TODO set earlier
+        x2 = x2,
+        y1 = y1,
+        y2 = y2,
+        age_class = 1,
+        confidence = species_confidence,
+        is_shadow = True if hotspot_id[-1] == "S" else False,
+        start_date = 1,
+        end_date = 1,
+        hotspot_id = hotspot_id,
+        worker = worker.id,
+        job = j.id
+    )
     s.commit()
     s.close()
     x=1
