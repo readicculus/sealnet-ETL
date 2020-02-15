@@ -1,0 +1,57 @@
+<script src="https://assets.crowd.aws/crowd-html-elements.js"></script>
+<style>
+  .cboxs {
+    width: 200px;
+  }
+
+  #conf_slider {
+    width: 200px;
+  }
+  #notes_input {
+    width: 400px;
+  }
+
+</style>
+<crowd-form>
+  <crowd-bounding-box
+    name="_"
+    src="{{ task.input.source-ref | grant_read_access }}"
+    header="x"
+    labels="['Polar Bear']"
+    initial-value="[
+      {% for box in task.input.bounding-box.annotations %}
+        {% capture class_id %}{{ box.class_id }}{% endcapture %}
+        {% assign label = task.input.bounding-box-metadata.class-map[class_id] %}
+      {
+        label: {{label | to_json}},
+        left: {{box.left}},
+        top: {{box.top}},
+        width: {{box.width}},
+        height: {{box.height}}
+      },
+      {% endfor %}
+    ]"
+  >
+    <full-instructions header="Bounding Box Instructions" >
+
+    </full-instructions>
+
+    <short-instructions>
+      Draw boxes around the requested target of interest.
+        <select name="_" id="dropdown"></select>
+        <div class="cboxs"><crowd-checkbox name="options" value="foggy" {% if task.input.bounding-box-metadata.img_foggy%} checked{% endif %}> Foggy</div>
+        <div class="cboxs"><crowd-checkbox name="options" value="finalized"> Finalized</div>
+        <div id="notes_input"><crowd-input name="notes" label="Notes"></crowd-input></div>
+        <div><crowd-slider id="conf_slider" min={{ task.input.bounding-box-metadata.img_quality }} max=100 name="confidence" step=1 value=-1></crowd-slider>
+    </short-instructions>
+
+  </crowd-bounding-box>
+
+  <input type="hidden" name="faces" id="answerInput">
+</crowd-form>
+
+<script>
+  document.querySelector('crowd-form').onsubmit = function() {
+     answerInput.value= "{{task.input.bounding-box-metadata.label_ids | to_json}}";
+   }
+</script>
