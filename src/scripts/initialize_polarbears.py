@@ -17,9 +17,9 @@ from dateutil import parser
 import pytz
 
 from scripts.util import upoload_s3, file_exists, key_exists, parse_chess_filename
-
-if True:
-    refresh_schema()
+#
+# if True:
+#     refresh_schema()
 NOAA_WORKER = "noaa"
 NOAA_JOB = "noaa_original_labels"
 YUVAL_WORKER = "yuval"
