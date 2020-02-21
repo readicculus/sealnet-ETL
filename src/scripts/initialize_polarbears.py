@@ -5,18 +5,26 @@ import pandas as pd
 import os
 import numpy as np
 from PIL import Image
-from botocore.exceptions import ClientError
 from sqlalchemy import create_engine
 from datetime import datetime
 from noaadb import DATABASE_URI, Session, queries
 from noaadb.models import NOAAImage, Label, Worker, Job, Species, Hotspot
-from noaadb.queries import species_exists, job_exists, worker_exists, get_image, get_job_by_name, get_worker, get_species
+from noaadb.queries import species_exists, job_exists, worker_exists, get_image, get_job_by_name, get_worker, \
+    get_species, add_job_if_not_exists, add_worker_if_not_exists
 from noaadb.schema_ops import refresh_schema
+from scripts.util import *
 from dateutil import parser
 import pytz
 
+from scripts.util import upoload_s3, file_exists, key_exists, parse_chess_filename
+
 if True:
     refresh_schema()
+NOAA_WORKER = "noaa"
+NOAA_JOB = "noaa_original_labels"
+YUVAL_WORKER = "yuval"
+YUVAL_JOB = "yuvals_2019_relabel_mission"
+YUVAL_NEW_JOB = "yuvals_new_labels"
 
 LOCAL_S3 = "/data/raw_data/PolarBears/s3_images/"
 s3_client = boto3.client('s3')
@@ -29,28 +37,6 @@ BEAUFORT_PATH = "/data/raw_data/PolarBears/s3_images/2019_Beaufort_PolarBears/"
 RU_PATH = "/data/raw_data/Polar_Bear/2016_Chukchi_CHESS_Russia/"
 BACKUP_PATH = "/data/raw_data/TrainingAnimals_ColorImages"
 BACKUP_PATH_IR = "/data/raw_data/TrainingAnimals_ThermalImages"
-def file_exists(path):
-    if not pd.isna(path):
-        return os.path.exists(path)
-    return None
-
-def key_exists(bucket, key):
-    try:
-        s3_client.head_object(Bucket=bucket, Key=key)
-    except ClientError:
-        return False
-    return True
-
-def parse_chess_filename (f):
-    info = {}
-    e = f.split('_')
-    e = [a for a in e if a != ""]
-    info['survey'] = e[0]
-    info['flight'] = e[1]+"_"+e[2]
-    info['camPos'] = e[3]
-    info['timestamp'] = e[4]
-    info['camtype'] = e[5].split('-')[0]
-    return info
 
 job_name = "polarbear_labels_v1.0"
 job_path= "jobs/original_polarbear_labels.csv"
@@ -75,11 +61,6 @@ for i, row in pb_df.iterrows():
     y1 = vals[16] if updated else vals[12]
     x2 = vals[17] if updated else vals[13]
     y2 = vals[18] if updated else vals[14]
-    # l_u = vals[15]
-    # t_u = vals[16]
-    # r_u = vals[17]
-    # b_u = vals[18]
-
 
     if fog == "No":
         fog = False
@@ -142,29 +123,25 @@ for i, row in pb_df.iterrows():
 
     rgb_im = Image.open(rgb_path)
     comressed_rgb_local_path = os.path.join("/fast/s3/images/rgb/", "c_" + rgb_image_name)
-    rgb_im.save(comressed_rgb_local_path, "JPEG", optimize=True, quality=50)
+    # rgb_im.save(comressed_rgb_local_path, "JPEG", optimize=True, quality=50)
 
     s3_rgb_path = os.path.join("images/rgb/", rgb_image_name)
     s3_rgb__compressed_path = os.path.join("images/rgb/compressed/", rgb_image_name)
-    if not key_exists(S3_BUCKET, s3_rgb_path):
-        print("Uploading %s -> %s" % (rgb_path, s3_rgb_path))
-        s3.meta.client.upload_file(rgb_path, 'noaa-data', s3_rgb_path)
-    if not key_exists(S3_BUCKET, s3_rgb__compressed_path):
-        print("Uploading %s -> %s" % (rgb_path, s3_rgb__compressed_path))
-        s3.meta.client.upload_file(comressed_rgb_local_path, 'noaa-data', s3_rgb__compressed_path)
+    # upoload_s3(s3, s3_client, 'noaa-data', rgb_path, s3_rgb_path)
+    # upoload_s3(s3, s3_client, 'noaa-data',comressed_rgb_local_path, s3_rgb__compressed_path)
 
-    s3_ir_path = None
+    s3_ir_path = None if ir_image_name is None else os.path.join("images/ir/", ir_image_name)
     ir_im = None
     if ir_exists:
-        s3_ir_path = os.path.join("images/ir/", ir_image_name)
-        if not key_exists(S3_BUCKET, s3_ir_path):
-            print("Uploading %s -> %s" % (ir_path, s3_ir_path))
-            s3.meta.client.upload_file(ir_path, 'noaa-data', s3_ir_path)
+        # upoload_s3(s3, s3_client, 'noaa-data', ir_path, s3_ir_path)
         ir_im = Image.open(ir_path)
-
 
     s = Session()
     # Insert image if they don't already exist in table
+    image_quality = None
+
+    if status is not None and is_bad_res(status):
+        image_quality = 0
 
     rgb_db_obj=None
     if not queries.image_exists(s, rgb_image_name):
@@ -172,14 +149,14 @@ for i, row in pb_df.iterrows():
             file_name=rgb_image_name,
             file_path=s3_rgb__compressed_path,
             type="RGB",
-            foggy=fog,
             width=rgb_im.width,
             height=rgb_im.height,
             depth=rgb_im.layers,
-            bad_res= None if not status else "bad_res" in status.split("-"),
             survey=a['survey'],
             flight=a['flight'],
             cam_position=a['camPos'],
+            quality=image_quality,
+            foggy=fog,
             timestamp=timestamp_obj
         )
         s.add(rgb_db_obj)
@@ -202,23 +179,15 @@ for i, row in pb_df.iterrows():
     rgb_db_img = get_image(s, rgb_image_name)
     ir_db_img = None if ir_image_name is None else get_image(s, ir_image_name)
 
+    rgb_worker_name = YUVAL_WORKER if updated else NOAA_WORKER
+    rgb_job_name = YUVAL_JOB if updated else NOAA_JOB
+    ir_worker_name = NOAA_WORKER
+    ir_job_name = NOAA_JOB
+    rgb_job = add_job_if_not_exists(s, rgb_job_name, job_path)
+    rgb_worker = add_worker_if_not_exists(s, rgb_worker_name, True)
 
-
-    if not job_exists(s, job_name):
-        j = Job(
-            job_name=job_name,
-            file_path= job_path,
-            notes=""
-        )
-        s.add(j)
-    j = get_job_by_name(s, job_name)
-    if not worker_exists(s, worker_name):
-        w = Worker(
-            name=worker_name,
-            human=True
-        )
-        s.add(w)
-    w = get_worker(s, worker_name)
+    ir_job = add_job_if_not_exists(s, ir_job_name, job_path)
+    ir_worker = add_worker_if_not_exists(s, ir_worker_name, True)
 
     if not species_exists(s, species_id):
         species_row = Species(name=species_id)
@@ -239,8 +208,8 @@ for i, row in pb_df.iterrows():
             is_shadow = pb_id is not None and pb_id[-1] == "s",
             start_date = datetime.now(),
             hotspot_id = hotspot_id,
-            worker = w.id,
-            job = j.id
+            worker = ir_worker.id,
+            job = ir_job.id
         )
         s.add(label_entry_ir)
     label_entry_rgb = Label(
@@ -255,8 +224,8 @@ for i, row in pb_df.iterrows():
         is_shadow = pb_id is not None and pb_id[-1] == "s",
         start_date = datetime.now(),
         hotspot_id = pb_id if pb_id else hotspot_id,
-        worker = w.id,
-        job = j.id
+        worker = rgb_worker.id,
+        job = rgb_job.id
     )
     s.add(label_entry_rgb)
     s.flush()

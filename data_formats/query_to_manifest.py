@@ -9,6 +9,7 @@ from noaadb.models import NOAAImage, Label, Worker, Job, Species, Hotspot
 import os
 
 out_file_name = "polar-bear-compressed-images-test"
+label_attribute = "bounding-box"
 file_path_base = "s3://noaa-data/"
 # file_path_base = "/fast/s3/"
 
@@ -28,7 +29,7 @@ def get_all_hotspots(session):
         .outerjoin(Species, eo.species==Species.id)\
         .outerjoin(eo_job, eo_job.id==eo.job)\
         .outerjoin(eo_worker, eo.worker==eo_worker.id)\
-        .all()
+        .filter(eo.is_shadow == False).all()
     return y
 
 s = Session()
@@ -53,7 +54,7 @@ for im in images:
 
     data = {}
     data["source-ref"] = os.path.join(file_path_base, image.file_path)
-    data["bounding-box"] = {
+    data[label_attribute] = {
         "annotations": [],
         "image_size": [{
             "width": image.width,
@@ -82,13 +83,13 @@ for im in images:
            "label_id": eo_label.id
         }
         meta.append({"confidence": 0 if eo_label.confidence is None else float(eo_label.confidence) / 100.0, "label_id": eo_label.id})
-        data["bounding-box"]["annotations"].append(annotation)
+        data[label_attribute]["annotations"].append(annotation)
         timestamp = eo_label.start_date
         job = eo_job
         label_ids.append(eo_label.id)
     time =  timestamp.strftime("%Y-%m-%d")
 
-    data["bounding-box-metadata"] = {
+    data["%s-metadata"%label_attribute] = {
         "job-name": job.job_name,
         "class-map": species_map,
         "human-annotated": "yes" if (worker.human is None or worker.human) else "no",

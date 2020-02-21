@@ -14,7 +14,7 @@
 </style>
 <crowd-form>
   <crowd-bounding-box
-    name="_"
+    name="annotator"
     src="{{ task.input.source-ref | grant_read_access }}"
     header="x"
     labels="['Polar Bear']"
@@ -47,11 +47,21 @@
 
   </crowd-bounding-box>
 
-  <input type="hidden" name="faces" id="answerInput">
+  <input type="hidden" name="label-ids" id="labelIds">
 </crowd-form>
 
 <script>
   document.querySelector('crowd-form').onsubmit = function() {
-     answerInput.value= "{{task.input.bounding-box-metadata.label_ids | to_json}}";
+     labelIds.value= "{{task.input.bounding-box-metadata.label_ids | to_json}}";
+   }
+
+   function overlayImage() {
+      var canvas = document.querySelector('crowd-bounding-box').shadowRoot.querySelector('canvas.upper-canvas');
+      var coords = canvas.getBoundingClientRect();
+      overlay.height = coords.height;
+      overlay.width = coords.width;
+      overlay.style.left = coords.left + window.scrollX + 'px';
+      overlay.style.top = coords.top + window.scrollY + 'px';
+      console.log(coords);
    }
 </script>
