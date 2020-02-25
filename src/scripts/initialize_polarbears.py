@@ -1,25 +1,13 @@
-import datetime
 import boto3
-import botocore
-import pandas as pd
-import os
-import numpy as np
 from PIL import Image
-from sqlalchemy import create_engine
-from datetime import datetime
-from noaadb import DATABASE_URI, Session, queries
-from noaadb.models import NOAAImage, Label, Worker, Job, Species, Hotspot
-from noaadb.queries import species_exists, job_exists, worker_exists, get_image, get_job_by_name, get_worker, \
-    get_species, add_job_if_not_exists, add_worker_if_not_exists
-from noaadb.schema_ops import refresh_schema
+from noaadb import Session
+from noaadb.schema import queries
+from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
+from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, add_worker_if_not_exists
 from scripts.util import *
 from dateutil import parser
-import pytz
 
-from scripts.util import upoload_s3, file_exists, key_exists, parse_chess_filename
-#
-# if True:
-#     refresh_schema()
+from scripts.util import file_exists, parse_chess_filename
 NOAA_WORKER = "noaa"
 NOAA_JOB = "noaa_original_labels"
 YUVAL_WORKER = "yuval"
@@ -57,10 +45,10 @@ for i, row in pb_df.iterrows():
     thermal_y = None if pd.isna(vals[10]) else vals[10]
     updated = vals[19]
     status = None if pd.isna(vals[20]) else vals[20].replace("none", "")
-    x1 = vals[15] if updated else vals[11]
-    y1 = vals[16] if updated else vals[12]
-    x2 = vals[17] if updated else vals[13]
-    y2 = vals[18] if updated else vals[14]
+    x1 = vals[15] if updated or not vals[11] else vals[11]
+    y1 = vals[16] if updated or not vals[12] else vals[12]
+    x2 = vals[17] if updated or not vals[13] else vals[13]
+    y2 = vals[18] if updated or not vals[14] else vals[14]
 
     if fog == "No":
         fog = False
@@ -195,10 +183,10 @@ for i, row in pb_df.iterrows():
     sp = get_species(s,species_id)
     age_class = None if not status else status.split("-")[0]
     label_entry_ir = None
-    if ir_exists:
+    if ir_exists and thermal_x is not None and thermal_y is not None:
         label_entry_ir = Label(
-            image = (ir_db_img.id if ir_db_img else None),
-            species = sp.id,
+            image = ir_db_img,
+            species = sp,
             x1 = thermal_x, # TODO set earlier
             x2 = thermal_x,
             y1 = thermal_y,
@@ -208,13 +196,13 @@ for i, row in pb_df.iterrows():
             is_shadow = pb_id is not None and pb_id[-1] == "s",
             start_date = datetime.now(),
             hotspot_id = hotspot_id,
-            worker = ir_worker.id,
-            job = ir_job.id
+            worker = ir_worker,
+            job = ir_job
         )
         s.add(label_entry_ir)
     label_entry_rgb = Label(
-        image = (rgb_db_img.id if rgb_db_img else None),
-        species = sp.id,
+        image = rgb_db_img,
+        species = sp,
         x1 = x1, # TODO set earlier
         x2 = x2,
         y1 = y1,
@@ -224,15 +212,15 @@ for i, row in pb_df.iterrows():
         is_shadow = pb_id is not None and pb_id[-1] == "s",
         start_date = datetime.now(),
         hotspot_id = pb_id if pb_id else hotspot_id,
-        worker = rgb_worker.id,
-        job = rgb_job.id
+        worker = rgb_worker,
+        job = rgb_job
     )
     s.add(label_entry_rgb)
     s.flush()
 
     l = Hotspot(
-        eo_label = None if not rgb_exists else label_entry_rgb.id,
-        ir_label = None if not ir_exists else label_entry_ir.id,
+        eo_label = None if not rgb_exists else label_entry_rgb,
+        ir_label = None if not ir_exists else label_entry_ir,
         hs_id = pb_id if pb_id else hotspot_id,
         eo_accepted = False,
         ir_accepted = False  # TODO ir x1x2etc

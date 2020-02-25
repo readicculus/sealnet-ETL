@@ -1,11 +1,10 @@
 import json
 
-import boto3
 from sqlalchemy.orm import aliased
 
 from noaadb import Session
-from noaadb.queries import get_job_by_name, get_all_species, get_worker
-from noaadb.models import NOAAImage, Label, Worker, Job, Species, Hotspot
+from noaadb.schema.queries import get_all_species
+from noaadb.schema.models import NOAAImage, Label, Worker, Job, Species, Hotspot
 import os
 
 out_file_name = "polar-bear-compressed-images-test"

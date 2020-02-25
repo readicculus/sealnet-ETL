@@ -1,24 +1,13 @@
-import datetime
 import boto3
-import botocore
-import pandas as pd
-import os
-import numpy as np
 from PIL import Image
-from sqlalchemy import create_engine
-from datetime import datetime
-from noaadb import DATABASE_URI, Session, queries
-from noaadb.models import NOAAImage, Label, Worker, Job, Species, Hotspot
-from noaadb.queries import *
-from noaadb.schema_ops import refresh_schema
-from dateutil import parser
-import pytz
-
+from noaadb import Session
+from noaadb.schema.queries import *
+from noaadb.schema.schema_ops import refresh_schema
 
 from scripts.util import *
 refresh = False
 upload_s3 = False
-log_existing = False
+log_existing = True
 if refresh:
     refresh_schema()
 
@@ -36,10 +25,15 @@ S3_BUCKET = "noaa-data"
 
 # pb_df = pd.read_csv("updated_seals.csv")
 # job_path= "jobs/updated_seals.csv"
+# new labels RGB 6344 IR 5970
+# new hotspots 6344
+# new images RGB 4882 IR 4907
 
 pb_df = pd.read_csv("TrainingAnimals_WithSightings_updating.csv")
 job_path= "jobs/TrainingAnimals_WithSightings_updating.csv"
-
+# new labels RGB 955 IR 957
+# new hotspots 489
+# new images RGB 285 IR 683
 
 rgb_dirs = ["/data/raw_data/TrainingAnimals_ColorImages"]
 ir_dirs = ["/data/raw_data/TrainingAnimals_ThermalImages", "/data/raw_data/ALL_THERMAL"]
@@ -155,67 +149,69 @@ for i, row in pb_df.iterrows():
     if rgb_timestamp is None:
         print("unable to parse timestamp", rgb_file_info)
     # Insert image if they don't already exist in table
-    rgb_db_row_new=None
-    rgb_db_row_new= NOAAImage(
-        file_name=rgb_image_name,
-        file_path=s3_rgb__compressed_path,
-        type="RGB",
-        width=rgb_im.width,
-        height=rgb_im.height,
-        depth=rgb_im.layers,
-        survey=rgb_file_info['survey'],
-        flight=rgb_file_info['flight'],
-        cam_position=rgb_file_info['camPos'],
-        quality=image_quality,
-        foggy=fog,
-        timestamp=rgb_timestamp
-    )
-    session.add(rgb_db_row_new)
-    try:
-        session.commit()
-        new_images_rgb+=1
-        print("Inserted Image: %s" % rgb_db_row_new.file_name)
-    except:
-        session.rollback()
-        rgb_db_row_new = get_image(session, rgb_image_name)
-        if log_existing: print("Image already exists: %s" % rgb_db_row_new.file_name)
-        updates = {}
-        old = {}
-        if rgb_db_row_new.quality != image_quality and image_quality is not None:
-            updates['quality'] = image_quality
-            old['quality'] = rgb_db_row_new.quality
-
-            session.query(NOAAImage).filter(NOAAImage.file_name == rgb_image_name).update(updates)
-            print("Updated NOAAImage %s" % rgb_image_name, old, updates)
-            session.flush()
-
-    ir_db_row_new= None
-    # if ir_image_name is not None and not queries.image_exists(session, ir_image_name):
-    if ir_image_name is not None:
-        ir_file_info = parse_chess_filename(ir_image_name)
-        ir_timestamp = parse_timestamp(ir_file_info["timestamp"])
-        ir_db_row_new = NOAAImage(
-            file_name=ir_image_name,
-            file_path=s3_ir_path,
-            type="IR",
-            width=ir_im.width,
-            height=ir_im.height,
-            depth=1,
-            survey=ir_file_info['survey'],
-            flight=ir_file_info['flight'],
+    rgb_db_row_new=get_image(session, rgb_image_name)
+    if not rgb_db_row_new:
+        rgb_db_row_new= NOAAImage(
+            file_name=rgb_image_name,
+            file_path=s3_rgb__compressed_path,
+            type="RGB",
+            width=rgb_im.width,
+            height=rgb_im.height,
+            depth=rgb_im.layers,
+            survey=rgb_file_info['survey'],
+            flight=rgb_file_info['flight'],
             cam_position=rgb_file_info['camPos'],
-            timestamp=ir_timestamp
+            quality=image_quality,
+            foggy=fog,
+            timestamp=rgb_timestamp
         )
-        session.add(ir_db_row_new)
-
+        session.add(rgb_db_row_new)
         try:
-            session.flush()
-            new_images_ir+=1
-            print("Inserted Image: %s" % ir_db_row_new.file_name)
+            session.commit()
+            new_images_rgb+=1
+            print("Inserted Image: %s" % rgb_db_row_new.file_name)
         except:
             session.rollback()
-            ir_db_row_new = get_image(session, ir_image_name)
-            if log_existing: print("Image already exists: %s" % ir_db_row_new.file_name)
+            rgb_db_row_new = get_image(session, rgb_image_name)
+            if log_existing: print("Image already exists: %s" % rgb_db_row_new.file_name)
+            updates = {}
+            old = {}
+            if rgb_db_row_new.quality != image_quality and image_quality is not None:
+                updates['quality'] = image_quality
+                old['quality'] = rgb_db_row_new.quality
+
+                session.query(NOAAImage).filter(NOAAImage.file_name == rgb_image_name).update(updates)
+                print("Updated NOAAImage %s" % rgb_image_name, old, updates)
+                session.flush()
+
+    ir_db_row_new= get_image(session, ir_image_name)
+    if not ir_db_row_new:
+        # if ir_image_name is not None and not queries.image_exists(session, ir_image_name):
+        if ir_image_name is not None:
+            ir_file_info = parse_chess_filename(ir_image_name)
+            ir_timestamp = parse_timestamp(ir_file_info["timestamp"])
+            ir_db_row_new = NOAAImage(
+                file_name=ir_image_name,
+                file_path=s3_ir_path,
+                type="IR",
+                width=ir_im.width,
+                height=ir_im.height,
+                depth=1,
+                survey=ir_file_info['survey'],
+                flight=ir_file_info['flight'],
+                cam_position=rgb_file_info['camPos'],
+                timestamp=ir_timestamp
+            )
+            session.add(ir_db_row_new)
+
+            try:
+                session.flush()
+                new_images_ir+=1
+                print("Inserted Image: %s" % ir_db_row_new.file_name)
+            except:
+                session.rollback()
+                ir_db_row_new = get_image(session, ir_image_name)
+                if log_existing: print("Image already exists: %s" % ir_db_row_new.file_name)
 
     rgb_job = add_job_if_not_exists(session, rgb_job_name, job_path)
     rgb_worker = add_worker_if_not_exists(session, rgb_worker_name, True)
@@ -223,19 +219,28 @@ for i, row in pb_df.iterrows():
     ir_job = add_job_if_not_exists(session, ir_job_name, job_path)
     ir_worker = add_worker_if_not_exists(session, ir_worker_name, True)
 
-    if not species_exists(session, species_id):
-        species_row = Species(name=species_id)
-        session.add(species_row)
     sp = get_species(session, species_id)
+    if not sp:
+        sp = Species(name=species_id)
+        session.add(sp)
+        try:
+            session.flush()
+        except:
+            session.rollback()
+            sp = get_species(session, species_id)
 
-    session.flush()
+    # if not species_exists(session, species_id):
+    #     species_row = Species(name=species_id)
+    #     session.add(species_row)
+    # sp = get_species(session, species_id)
+
     age_class = None
 
     label_entry_ir = None
-    if ir_exists and not is_new:
-        label_entry_ir = Label(
-            image = (ir_db_row_new.id if ir_db_row_new else None),
-            species = sp.id,
+    if ir_exists and not is_new and thermal_x is not None and thermal_y is not None:
+        label_entry_ir_l = Label(
+            image = ir_db_row_new,
+            species = sp,
             x1 = thermal_x, # TODO set earlier
             x2 = thermal_x,
             y1 = thermal_y,
@@ -246,22 +251,25 @@ for i, row in pb_df.iterrows():
             start_date = datetime.now(),
             end_date= end_date,
             hotspot_id =  None if is_new else hotspot_id,
-            worker = ir_worker.id,
-            job = ir_job.id
+            worker = ir_worker,
+            job = ir_job
         )
-        try:
-            session.add(label_entry_ir)
-            session.flush()
-            new_labels_ir+=1
-            print("Insert IR Label:", label_entry_ir)
-        except:
-            session.rollback()
-            label_entry_ir = get_existing_label(session, label_entry_ir)
-            if log_existing: print("IR Label exists id=%d" % label_entry_ir.id)
+        label_entry_ir = get_existing_label(session, label_entry_ir_l)
+        if not label_entry_ir:
+            try:
+                session.add(label_entry_ir_l)
+                session.flush()
+                new_labels_ir+=1
+                label_entry_ir = label_entry_ir_l
+                print("Insert IR Label:", label_entry_ir_l)
+            except:
+                session.rollback()
+                label_entry_ir = get_existing_label(session, label_entry_ir_l)
+                if log_existing: print("IR Label exists id=%d" % label_entry_ir_l.id)
 
-    label_entry_rgb = Label(
-        image = (rgb_db_row_new.id if rgb_db_row_new else None),
-        species = sp.id,
+    label_entry_rgb_l = Label(
+        image = rgb_db_row_new,
+        species = sp,
         x1 = x1, # TODO set earlier
         x2 = x2,
         y1 = y1,
@@ -272,39 +280,43 @@ for i, row in pb_df.iterrows():
         start_date = datetime.now(),
         end_date= end_date,
         hotspot_id = None if is_new else hotspot_id,
-        worker = rgb_worker.id,
-        job = rgb_job.id
+        worker = rgb_worker,
+        job = rgb_job
     )
-
-    try:
-        session.add(label_entry_rgb)
-        session.flush()
-        new_labels_rgb+=1
-        print("Insert RGB Label:", label_entry_rgb)
-    except:
-        session.rollback()
-        label_entry_rgb = get_existing_label(session, label_entry_rgb)
-        if log_existing: print("RGB Label exists id=%d" % label_entry_rgb.id)
+    label_entry_rgb = get_existing_label(session, label_entry_rgb_l)
+    if not label_entry_rgb:
+        try:
+            session.add(label_entry_rgb_l)
+            session.flush()
+            new_labels_rgb+=1
+            label_entry_rgb = label_entry_rgb_l
+            print("Insert RGB Label:", label_entry_rgb_l)
+        except:
+            session.rollback()
+            label_entry_rgb = get_existing_label(session, label_entry_rgb_l)
+            if log_existing: print("RGB Label exists id=%d" % label_entry_rgb_l.id)
 
     if not removed and not (label_entry_rgb is None and label_entry_ir is None):
         l = Hotspot(
-            eo_label = None if not label_entry_rgb else label_entry_rgb.id,
-            ir_label = None if not label_entry_ir or is_new else label_entry_ir.id,
+            eo_label = None if not label_entry_rgb else label_entry_rgb,
+            ir_label = None if not label_entry_ir or is_new else label_entry_ir,
             hs_id =  None if is_new else hotspot_id,
             eo_accepted = False,
             ir_accepted = False  # TODO ir x1x2etc
         )
-        try:
-            session.add(l)
-            session.flush()
-            new_hotspots+=1
-            print("Insert Hotspor:", l)
-        except:
-            session.rollback()
-            if log_existing: print("Hotspot exists with eo_label=%d ir_label=%d" %(label_entry_rgb.id, label_entry_ir.id))
+        hs = get_existing_hotspot(session, l)
+        if not hs:
+            try:
+                session.add(l)
+                session.flush()
+                new_hotspots+=1
+                print("Insert Hotspor:", l)
+            except:
+                session.rollback()
+                if log_existing: print("Hotspot exists with eo_label=%d ir_label=%d" %(label_entry_rgb.id, label_entry_ir.id))
     print("%d/%d records" % (i, total))
-
     session.commit()
+session.commit()
 session.close()
 print("new labels RGB %d IR %d\n"
       "new hotspots %d\n"
