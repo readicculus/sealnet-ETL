@@ -4,9 +4,10 @@ import boto3
 from sqlalchemy import or_, and_, not_
 from sqlalchemy.orm import aliased
 
-from noaadb.api.api import LabelDBApi
 from noaadb.schema.models import NOAAImage, Label, Worker, Species, Hotspot
 import os
+
+from noaadb.api.api import LabelDBApi
 
 out_file_name = "labels-need-verification"
 label_attribute = "bounding-box"

@@ -1,9 +1,9 @@
 import boto3
 from PIL import Image
 from noaadb import Session
-from noaadb.schema import queries
-from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
-from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, add_worker_if_not_exists
+from noaadb import queries
+from noaadb import NOAAImage, Label, Species, Hotspot
+from noaadb import species_exists, get_image, get_species, add_job_if_not_exists, add_worker_if_not_exists
 from scripts.util import *
 from dateutil import parser
 

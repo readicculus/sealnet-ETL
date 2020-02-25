@@ -3,8 +3,8 @@ import json
 from sqlalchemy.orm import aliased
 
 from noaadb import Session
-from noaadb.schema.queries import get_all_species
-from noaadb.schema.models import NOAAImage, Label, Worker, Job, Species, Hotspot
+from noaadb import get_all_species
+from noaadb import NOAAImage, Label, Worker, Job, Species, Hotspot
 import os
 
 out_file_name = "polar-bear-compressed-images-test"

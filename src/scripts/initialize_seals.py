@@ -1,8 +1,7 @@
 import boto3
 from PIL import Image
 from noaadb import Session
-from noaadb.schema.queries import *
-from noaadb.schema.schema_ops import refresh_schema
+from noaadb import refresh_schema
 
 from scripts.util import *
 refresh = False
