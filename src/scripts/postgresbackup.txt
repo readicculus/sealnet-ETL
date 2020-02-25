@@ -1,2 +1,0 @@
-pg_dump -F c -U postgres noaa -f dbexport.pgsql
-pg_restore -C -d noaa -U postgres dbexport.pgsql
