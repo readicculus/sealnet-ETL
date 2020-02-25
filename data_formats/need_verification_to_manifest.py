@@ -7,7 +7,7 @@ from sqlalchemy.orm import aliased
 from noaadb.schema.models import NOAAImage, Label, Worker, Species, Hotspot
 import os
 
-from noaadb.api.api import LabelDBApi
+from noaadb.api import LabelDBApi
 
 out_file_name = "labels-need-verification"
 label_attribute = "bounding-box"

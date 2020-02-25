@@ -1,9 +1,9 @@
 import boto3
 from PIL import Image
 from noaadb import Session
-from noaadb import queries
-from noaadb import NOAAImage, Label, Species, Hotspot
-from noaadb import species_exists, get_image, get_species, add_job_if_not_exists, add_worker_if_not_exists
+from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
+from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
+    add_worker_if_not_exists, image_exists
 from scripts.util import *
 from dateutil import parser
 
@@ -132,7 +132,7 @@ for i, row in pb_df.iterrows():
         image_quality = 0
 
     rgb_db_obj=None
-    if not queries.image_exists(s, rgb_image_name):
+    if not image_exists(s, rgb_image_name):
         rgb_db_obj = NOAAImage(
             file_name=rgb_image_name,
             file_path=s3_rgb__compressed_path,
@@ -149,7 +149,7 @@ for i, row in pb_df.iterrows():
         )
         s.add(rgb_db_obj)
     ir_db_obj= None
-    if ir_image_name is not None and not queries.image_exists(s, ir_image_name):
+    if ir_image_name is not None and not image_exists(s, ir_image_name):
         ir_db_obj = NOAAImage(
             file_name=ir_image_name,
             file_path=s3_ir_path,

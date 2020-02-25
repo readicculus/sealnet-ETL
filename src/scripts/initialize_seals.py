@@ -1,7 +1,9 @@
 import boto3
 from PIL import Image
 from noaadb import Session
-from noaadb import refresh_schema
+from noaadb.noaadb.schema.schema_ops import refresh_schema
+from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
+from noaadb.schema.queries import *
 
 from scripts.util import *
 refresh = False
