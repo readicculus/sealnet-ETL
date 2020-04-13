@@ -1,7 +1,7 @@
 import boto3
 from PIL import Image
 from noaadb import Session
-from noaadb.noaadb.schema.schema_ops import refresh_schema
+from noaadb.schema.schema_ops import refresh_schema
 from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
 from noaadb.schema.queries import *
 
@@ -81,13 +81,13 @@ for i, row in pb_df.iterrows():
 
     species_confidence = None if pd.isna(vals[6]) else vals[6]
     if is_new:
-        species_confidence = 30
+        species_confidence = .3
     elif species_confidence == "No":
         species_confidence = 0
     elif species_confidence == "Likely":
-        species_confidence = 80
+        species_confidence = .9
     elif species_confidence == "Guess":
-        species_confidence = 30
+        species_confidence = .6
     elif species_confidence is not None:
         species_confidence = int(species_confidence.replace("%", ""))
 
@@ -97,7 +97,7 @@ for i, row in pb_df.iterrows():
         image_quality = 0
 
     if is_maybe_seal(status):
-        species_confidence = 30 # same as "Guess"
+        species_confidence = .3 # same as "Guess"
     off_edge = is_off_edge(status)
 
     rgb_file_info = {}
@@ -120,7 +120,7 @@ for i, row in pb_df.iterrows():
     ir_worker_name = NOAA_WORKER
     ir_job_name = NOAA_JOB
     if is_new:
-        job = YUVAL_NEW_JOB
+        rgb_job_name = YUVAL_NEW_JOB
 
     # open rgb image, compress and save locally
     rgb_im = Image.open(rgb_path)
@@ -154,7 +154,7 @@ for i, row in pb_df.iterrows():
     if not rgb_db_row_new:
         rgb_db_row_new= NOAAImage(
             file_name=rgb_image_name,
-            file_path=s3_rgb__compressed_path,
+            file_path=rgb_path,
             type="RGB",
             width=rgb_im.width,
             height=rgb_im.height,
@@ -193,7 +193,7 @@ for i, row in pb_df.iterrows():
             ir_timestamp = parse_timestamp(ir_file_info["timestamp"])
             ir_db_row_new = NOAAImage(
                 file_name=ir_image_name,
-                file_path=s3_ir_path,
+                file_path=ir_path,
                 type="IR",
                 width=ir_im.width,
                 height=ir_im.height,

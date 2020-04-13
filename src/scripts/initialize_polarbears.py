@@ -4,14 +4,18 @@ from noaadb import Session
 from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
 from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
     add_worker_if_not_exists, image_exists
+from noaadb.schema.schema_ops import refresh_schema
 from scripts.util import *
 from dateutil import parser
 
 from scripts.util import file_exists, parse_chess_filename
+refresh = False
+if refresh:
+    refresh_schema()
 NOAA_WORKER = "noaa"
 NOAA_JOB = "noaa_original_labels"
 YUVAL_WORKER = "yuval"
-YUVAL_JOB = "yuvals_2019_relabel_mission"
+YUVAL_JOB = "yuvals_2019_polarbear_updates"
 YUVAL_NEW_JOB = "yuvals_new_labels"
 
 LOCAL_S3 = "/data/raw_data/PolarBears/s3_images/"
@@ -29,7 +33,7 @@ BACKUP_PATH_IR = "/data/raw_data/TrainingAnimals_ThermalImages"
 job_name = "polarbear_labels_v1.0"
 job_path= "jobs/original_polarbear_labels.csv"
 
-
+s = Session()
 for i, row in pb_df.iterrows():
     vals = list(row)
     id = vals[0]
@@ -39,7 +43,7 @@ for i, row in pb_df.iterrows():
     pb_id = None if pd.isna(vals[4]) else vals[4]
     hotspot_type = vals[5]
     species_id = vals[6]
-    species_confidence = None if pd.isna(vals[7]) else int(vals[7].replace("%", ""))
+    species_confidence = None if pd.isna(vals[7]) else float(vals[7].replace("%", ""))/100.
     fog = vals[8]
     thermal_x = None if pd.isna(vals[9]) else vals[9]
     thermal_y = None if pd.isna(vals[10]) else vals[10]
@@ -110,21 +114,20 @@ for i, row in pb_df.iterrows():
     worker_name = "yuval" if updated else "noaa"
 
     rgb_im = Image.open(rgb_path)
-    comressed_rgb_local_path = os.path.join("/fast/s3/images/rgb/", "c_" + rgb_image_name)
+    # comressed_rgb_local_path = os.path.join("/fast/s3/images/rgb/", "c_" + rgb_image_name)
     # rgb_im.save(comressed_rgb_local_path, "JPEG", optimize=True, quality=50)
 
-    s3_rgb_path = os.path.join("images/rgb/", rgb_image_name)
-    s3_rgb__compressed_path = os.path.join("images/rgb/compressed/", rgb_image_name)
+    # s3_rgb_path = os.path.join("images/rgb/", rgb_image_name)
+    # s3_rgb__compressed_path = os.path.join("images/rgb/compressed/", rgb_image_name)
     # upoload_s3(s3, s3_client, 'noaa-data', rgb_path, s3_rgb_path)
     # upoload_s3(s3, s3_client, 'noaa-data',comressed_rgb_local_path, s3_rgb__compressed_path)
 
-    s3_ir_path = None if ir_image_name is None else os.path.join("images/ir/", ir_image_name)
+    # s3_ir_path = None if ir_image_name is None else os.path.join("images/ir/", ir_image_name)
     ir_im = None
     if ir_exists:
         # upoload_s3(s3, s3_client, 'noaa-data', ir_path, s3_ir_path)
         ir_im = Image.open(ir_path)
 
-    s = Session()
     # Insert image if they don't already exist in table
     image_quality = None
 
@@ -135,7 +138,7 @@ for i, row in pb_df.iterrows():
     if not image_exists(s, rgb_image_name):
         rgb_db_obj = NOAAImage(
             file_name=rgb_image_name,
-            file_path=s3_rgb__compressed_path,
+            file_path=rgb_path,
             type="RGB",
             width=rgb_im.width,
             height=rgb_im.height,
@@ -152,7 +155,7 @@ for i, row in pb_df.iterrows():
     if ir_image_name is not None and not image_exists(s, ir_image_name):
         ir_db_obj = NOAAImage(
             file_name=ir_image_name,
-            file_path=s3_ir_path,
+            file_path=ir_path,
             type="IR",
             foggy=fog,
             width=ir_im.width,
