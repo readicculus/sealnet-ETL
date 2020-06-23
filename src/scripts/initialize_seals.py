@@ -3,7 +3,8 @@ from PIL import Image
 
 from build.lib.noaadb import Session
 from noaadb.schema.schema_ops import refresh_schema
-from noaadb.schema.models import NOAAImage, TruePositiveLabels, Species, Sighting
+from noaadb.schema.models import NOAAImage, Species, Sighting, IRLabelEntry, EOLabelEntry, \
+    LabelType, ImageType
 from noaadb.schema.queries import *
 
 from scripts.util import *
@@ -156,7 +157,7 @@ for i, row in pb_df.iterrows():
         rgb_db_row_new= NOAAImage(
             file_name=rgb_image_name,
             file_path=rgb_path,
-            type="RGB",
+            type=ImageType.RGB,
             width=rgb_im.width,
             height=rgb_im.height,
             depth=rgb_im.layers,
@@ -195,7 +196,7 @@ for i, row in pb_df.iterrows():
             ir_db_row_new = NOAAImage(
                 file_name=ir_image_name,
                 file_path=ir_path,
-                type="IR",
+                type=ImageType.IR,
                 width=ir_im.width,
                 height=ir_im.height,
                 depth=1,
@@ -207,6 +208,7 @@ for i, row in pb_df.iterrows():
             session.add(ir_db_row_new)
 
             try:
+                session.commit()
                 session.flush()
                 new_images_ir+=1
                 print("Inserted Image: %s" % ir_db_row_new.file_name)
@@ -226,6 +228,7 @@ for i, row in pb_df.iterrows():
         sp = Species(name=species_id)
         session.add(sp)
         try:
+            session.commit()
             session.flush()
         except:
             session.rollback()
@@ -237,82 +240,84 @@ for i, row in pb_df.iterrows():
     # sp = get_species(session, species_id)
 
     age_class = None
-
+    hotspot_id = None if is_new else hotspot_id
     label_entry_ir = None
     if ir_exists and not is_new and thermal_x is not None and thermal_y is not None:
-        label_entry_ir_l = TruePositiveLabels(
+        label_entry_ir_l = IRLabelEntry(
             image = ir_db_row_new,
             species = sp,
             x1 = thermal_x, # TODO set earlier
             x2 = thermal_x,
             y1 = thermal_y,
             y2 = thermal_y,
-            age_class = age_class,
             confidence = species_confidence,
             is_shadow = pb_id is not None and pb_id[-1] == "s",
             start_date = datetime.now(),
             end_date= end_date,
-            hotspot_id =  None if is_new else hotspot_id,
             worker = ir_worker,
             job = ir_job
         )
-        label_entry_ir = get_existing_label(session, label_entry_ir_l)
+        label_entry_ir = get_existing_ir_label(session, label_entry_ir_l)
         if not label_entry_ir:
             try:
                 session.add(label_entry_ir_l)
+                session.commit()
                 session.flush()
                 new_labels_ir+=1
                 label_entry_ir = label_entry_ir_l
                 print("Insert IR Label:", label_entry_ir_l)
             except:
                 session.rollback()
-                label_entry_ir = get_existing_label(session, label_entry_ir_l)
+                label_entry_ir = get_existing_ir_label(session, label_entry_ir_l)
                 if log_existing: print("IR Label exists id=%d" % label_entry_ir_l.id)
 
-    label_entry_rgb_l = TruePositiveLabels(
+    label_entry_rgb_l = EOLabelEntry(
         image = rgb_db_row_new,
         species = sp,
         x1 = x1, # TODO set earlier
         x2 = x2,
         y1 = y1,
         y2 = y2,
-        age_class = age_class,
         confidence = species_confidence,
         is_shadow = pb_id is not None and pb_id[-1] == "s",
         start_date = datetime.now(),
         end_date= end_date,
-        hotspot_id = None if is_new else hotspot_id,
         worker = rgb_worker,
         job = rgb_job
     )
-    label_entry_rgb = get_existing_label(session, label_entry_rgb_l)
+    label_entry_rgb = get_existing_eo_label(session, label_entry_rgb_l)
     if not label_entry_rgb:
         try:
             session.add(label_entry_rgb_l)
             session.flush()
+            session.commit()
             new_labels_rgb+=1
             label_entry_rgb = label_entry_rgb_l
             print("Insert RGB Label:", label_entry_rgb_l)
         except:
             session.rollback()
-            label_entry_rgb = get_existing_label(session, label_entry_rgb_l)
+            label_entry_rgb = get_existing_eo_label(session, label_entry_rgb_l)
             if log_existing: print("RGB Label exists id=%d" % label_entry_rgb_l.id)
 
     if not removed and not (label_entry_rgb is None and label_entry_ir is None):
         l = Sighting(
-            eo_label = None if not label_entry_rgb else label_entry_rgb,
-            ir_label = None if not label_entry_ir or is_new else label_entry_ir,
-            hs_id =  None if is_new else hotspot_id,
-            eo_accepted = False,
-            ir_accepted = False  # TODO ir x1x2etc
+            # eo_label = None if not label_entry_rgb else label_entry_rgb,
+            # ir_label = None if not label_entry_ir or is_new else label_entry_ir,
+            ir_label_id = None if not label_entry_ir or is_new else label_entry_ir.id,
+            eo_label_id = None if not label_entry_rgb or is_new else label_entry_rgb.id,
+            hotspot_id =  None if is_new else hotspot_id,
+            species=sp,
+            age_class=age_class,
+            discriminator=LabelType.TP
         )
         hs = get_existing_sighting(session, l)
         if not hs:
             try:
                 session.add(l)
+                session.commit()
                 session.flush()
                 new_hotspots+=1
-                print("Insert Hotspor:", l)
+                print("Insert Hotspot:", l)
             except:
                 session.rollback()
                 if log_existing: print("Hotspot exists with eo_label=%d ir_label=%d" %(label_entry_rgb.id, label_entry_ir.id))

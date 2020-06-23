@@ -1,6 +1,9 @@
 import boto3
 from PIL import Image
-from noaadb.schema.models import NOAAImage, TruePositiveLabels, Species, Sighting, LabelEntry
+
+from build.lib.noaadb import Session
+from noaadb.schema.models import NOAAImage, Species, Sighting, LabelEntry, IRLabelEntry, EOLabelEntry, ImageType, \
+    LabelType
 from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
     add_worker_if_not_exists, image_exists
 from noaadb.schema.schema_ops import refresh_schema
@@ -8,9 +11,7 @@ from scripts.util import *
 from dateutil import parser
 
 from scripts.util import file_exists, parse_chess_filename
-refresh = False
-if refresh:
-    refresh_schema()
+
 NOAA_WORKER = "noaa"
 NOAA_JOB = "noaa_original_labels"
 YUVAL_WORKER = "yuval"
@@ -138,7 +139,7 @@ for i, row in pb_df.iterrows():
         rgb_db_obj = NOAAImage(
             file_name=rgb_image_name,
             file_path=rgb_path,
-            type="RGB",
+            type=ImageType.RGB,
             width=rgb_im.width,
             height=rgb_im.height,
             depth=rgb_im.layers,
@@ -155,7 +156,7 @@ for i, row in pb_df.iterrows():
         ir_db_obj = NOAAImage(
             file_name=ir_image_name,
             file_path=ir_path,
-            type="IR",
+            type=ImageType.IR,
             foggy=fog,
             width=ir_im.width,
             height=ir_im.height,
@@ -184,40 +185,48 @@ for i, row in pb_df.iterrows():
         s.add(species_row)
     sp = get_species(s,species_id)
     age_class = None if not status else status.split("-")[0]
+    is_shadow=pb_id is not None and pb_id[-1] == "s"
     label_entry_ir = None
     to_add = []
     if ir_exists and thermal_x is not None and thermal_y is not None:
-        label_entry_ir = TruePositiveLabels(
+        label_entry_ir = IRLabelEntry(
             image = ir_db_img,
             x1 = thermal_x, # TODO set earlier
             x2 = thermal_x,
             y1 = thermal_y,
             y2 = thermal_y,
+            discriminator=ImageType.IR,
             confidence = species_confidence,
-            is_shadow = pb_id is not None and pb_id[-1] == "s",
+            is_shadow = is_shadow,
             start_date = datetime.now(),
             worker = ir_worker,
-            job = ir_job
+            job = ir_job,
+            species=sp
         )
         to_add.append(label_entry_ir)
-    label_entry_rgb = LabelEntry(
+    label_entry_rgb = EOLabelEntry(
         image = rgb_db_img,
         x1 = x1, # TODO set earlier
         x2 = x2,
         y1 = y1,
         y2 = y2,
+        discriminator=ImageType.RGB,
         confidence = species_confidence,
-        is_shadow = pb_id is not None and pb_id[-1] == "s",
+        is_shadow = is_shadow,
         start_date = datetime.now(),
         worker = rgb_worker,
-        job = rgb_job
+        job = rgb_job,
+        species=sp
     )
     to_add.append(label_entry_rgb)
 
     l = Sighting(
         hotspot_id=pb_id if pb_id else hotspot_id,
         age_class=age_class,
-        species=sp
+        species=sp,
+        eo_label=label_entry_rgb,
+        ir_label=label_entry_ir,
+        discriminator=LabelType.TP
     )
     to_add.append(l)
     s.add_all(to_add)

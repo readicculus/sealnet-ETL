@@ -10,7 +10,7 @@ from scripts.db_rm import remove_hotspots_by_survey, remove_fps_by_survey, remov
     remove_images_by_survey, remove_sightings_by_survey
 from noaadb.schema.models import NOAAImage, Species, FlightMeta, Sighting, ImageType, DISCRIMINATOR, LabelType, IRLabelEntry, EOLabelEntry
 from noaadb.schema.queries import get_image, add_job_if_not_exists, add_worker_if_not_exists, get_species, \
-    get_existing_label
+    get_existing_eo_label
 from noaadb.schema.schema_ops import refresh_schema
 from scripts.util import parse_timestamp, printProgressBar
 from sqlalchemy.exc import IntegrityError
@@ -129,6 +129,7 @@ fl05_L = RegisteredDetections('/data2/2019/fl05/LEFT/',
 
 # registered_list = [fl01_C, fl04_C, fl04_L, fl05_C, fl05_L]
 registered_list = [fl04_C, fl04_L, fl05_C, fl05_L]
+# registered_list = [fl01_C]
 
 def append_species(s, species_id):
     sp = get_species(s, species_id)
@@ -252,8 +253,9 @@ def append_images(session, images):
     session.commit()
 
 
-def add_label(s, row, im, worker, job, discriminator, type):
+def add_label(s, row, im, worker, job, species, type):
     iseo = (type=='eo')
+    disc = ImageType.RGB if iseo else ImageType.IR
     LabelClass = EOLabelEntry if iseo else IRLabelEntry
     label_entry = LabelClass(
         image=im,
@@ -261,8 +263,10 @@ def add_label(s, row, im, worker, job, discriminator, type):
         x2=row['x2_eo'] if iseo else row['x2_ir'],
         y1=row['y1_eo'] if iseo else row['y1_ir'],
         y2=row['y2_eo'] if iseo else row['y2_ir'],
+        species=species,
+        discriminator=disc
     )
-    check = get_existing_label(s, label_entry)
+    check = get_existing_eo_label(s, label_entry)
     if check is not None:
         return check
     label_entry = LabelClass(
@@ -277,7 +281,8 @@ def add_label(s, row, im, worker, job, discriminator, type):
         is_shadow=None,
         worker=worker,
         job=job,
-        discriminator=discriminator
+        discriminator=disc,
+        species=species
     )
     s.add(label_entry)
     try:
@@ -317,7 +322,7 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
 
         im_eo = get_image(s, row["image_eo"])
         label_entry_eo, label_entry_ir = None, None
-        label_entry_eo = add_label(s, row, im_eo, eo_worker, job, ImageType.RGB, 'eo')
+        label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species,'eo')
 
         # sighting.labels.extend([label_entry_eo])
         if im_eo is None:
@@ -330,7 +335,7 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
                 if im_ir is None:
                     print("ERROR %s" % os.path.basename(row["image_ir"]))
                 else:
-                    label_entry_ir = add_label(s, row, im_ir, ir_worker, job, ImageType.IR, 'ir')
+                    label_entry_ir = add_label(s, row, im_ir, ir_worker, job, species, 'ir')
 
                     # sighting.labels.extend([label_entry_ir])
 
@@ -373,8 +378,13 @@ def add_all():
 
 s = Session()
 # s.query(LabelEntry).all()
-remove_sightings_by_survey(s, survey=SURVEY)
-remove_labels_by_survey(s, survey=SURVEY)
+# remove_sightings_by_survey(s, survey=SURVEY)
+# remove_labels_by_survey(s, survey=SURVEY)
 add_all()
 s.close()
 # fix_images()
+# surveys = ["CHESS-russia" , "CHESS2016", "BEAUFORT-2019"]
+# for survey in surveys:
+#     remove_sightings_by_survey(s, survey=survey)
+# for survey in surveys:
+#     remove_labels_by_survey(s, survey=survey)

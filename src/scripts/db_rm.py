@@ -2,7 +2,7 @@ from sqlalchemy.orm import aliased
 
 from build.lib.noaadb import Session
 from noaadb.schema.models import *
-
+from sqlalchemy import inspect
 # def drop_tables(s):
 #     engine = create_engine(DATABASE_URI, echo=echo)
 #     Base.metadata.drop_all(engine)
@@ -41,12 +41,10 @@ def remove_hotspots_by_survey(s, survey):
 def remove_sightings_by_survey(s, survey):
     ir_label = aliased(LabelEntry)
     eo_label = aliased(LabelEntry)
-    eo_image = aliased(NOAAImage)
-    ir_image = aliased(NOAAImage)
 
-    res = s.query(Sighting) \
-        .join(ir_label, Sighting.ir_label).join(eo_label, Sighting.eo_label).join(eo_image, eo_label.image).filter_by(survey=survey).join(ir_image, ir_label.image) \
-        .all()
+    res1 = s.query(Sighting).filter(Sighting.ir_label_id.isnot(None)).join(ir_label, Sighting.ir_label).join(ir_label.image).filter_by(survey=survey).all()
+    res2 = s.query(Sighting).filter(Sighting.eo_label_id.isnot(None)).join(eo_label, Sighting.eo_label).join(eo_label.image).filter_by(survey=survey).all()
+    res = res1+res2
     for i, sighting in enumerate(res):
         s.delete(sighting)
         # s.delete(label)
@@ -56,17 +54,32 @@ def remove_sightings_by_survey(s, survey):
     s.commit()
 
 def remove_labels_by_survey(s, survey):
+    # ids_to_delete = s.query(LabelEntry.id).join(LabelEntry.image).filter_by(survey=survey).all()
+    # id_strings = [str(id_[0]) for id_ in ids_to_delete]
+    # s.query(LabelEntry). \
+    #     filter(LabelEntry.id.in_(id_strings)). \
+    #     delete(synchronize_session=False)
+    # # for r in res:
+    # #     r.discriminator = ImageType.ALL
+    # # s.commit()
+
+    # ids = []
+    # statment = s.delete(IRLabelEntry, prefixes=[LabelEntry.__tablename__]).where(LabelEntry.id.contains([some_int]))
+    # res = s.query(LabelEntry.id).join(LabelEntry.image).filter_by(survey=survey).all()
+
+    # a = with_polymorphic(LabelEntry, [EOLabelEntry, IRLabelEntry])
+    # res = s.query(a).all()
+
     res = s.query(LabelEntry).join(LabelEntry.image).filter_by(survey=survey).all()
     num = len(res)
     print("%d labels being deleted" % num)
-
     for i, label in enumerate(res):
+
         s.delete(label)
-        # s.delete(label)
-        if i % 1000 == 0:
-            s.commit()
-    s.flush()
+        s.commit()
+
     s.commit()
+    s.expunge_all()
 
     print("%d labels deleted" % num)
 
