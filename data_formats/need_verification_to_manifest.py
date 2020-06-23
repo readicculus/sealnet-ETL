@@ -4,7 +4,7 @@ import boto3
 from sqlalchemy import or_, and_, not_
 from sqlalchemy.orm import aliased
 
-from noaadb.schema.models import NOAAImage, Label, Worker, Species, Hotspot
+from noaadb.schema.models import NOAAImage, TruePositiveLabels, Worker, Species, Sighting
 import os
 
 from noaadb.api import LabelDBApi
@@ -15,34 +15,35 @@ file_path_base = "s3://noaa-data/images/rgb/compressed/"
 # file_path_base = "/fast/s3/"
 
 def get_all_hotspots(session):
-    eo_label = aliased(Label)
+    eo_label = aliased(TruePositiveLabels)
     eo_image = aliased(NOAAImage)
     eo_worker = aliased(Worker)
     species = aliased(Species)
 
-    y = session.query(Label, Hotspot) \
-        .outerjoin(Hotspot, Hotspot.eo_label_id == Label.id)\
-        .join(species, Label.species)\
-        .join(eo_worker, Label.worker)\
-        .join(eo_image, Label.image)\
-        .join(Label.job)\
+    y = session.query(TruePositiveLabels, Sighting) \
+        .outerjoin(Sighting, Sighting.eo_label_id == TruePositiveLabels.id)\
+        .join(species, TruePositiveLabels.species)\
+        .join(eo_worker, TruePositiveLabels.worker)\
+        .join(eo_image, TruePositiveLabels.image)\
+        .join(TruePositiveLabels.job)\
         .filter(
         and_(
             eo_image.type == 'RGB',
-            not_(Label.is_shadow),
+            not_(TruePositiveLabels.is_shadow),
             species.name.in_(('Polar Bear', 'Ringed Seal', 'Bearded Seal', 'UNK Seal')),
             or_(
                 eo_worker.name == 'noaa',
-                Label.end_date != None,
-                Label.x1 < 0,
-                Label.x2 > eo_image.width,
-                Label.y1 < 0,
-                Label.y2 > eo_image.height
+                TruePositiveLabels.end_date != None,
+                TruePositiveLabels.x1 < 0,
+                TruePositiveLabels.x2 > eo_image.width,
+                TruePositiveLabels.y1 < 0,
+                TruePositiveLabels.y2 > eo_image.height
             )
         )
     )\
     .all()
     return y
+
 api = LabelDBApi()
 api.begin_session()
 

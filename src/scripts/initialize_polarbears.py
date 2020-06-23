@@ -1,7 +1,6 @@
 import boto3
 from PIL import Image
-from noaadb import Session
-from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
+from noaadb.schema.models import NOAAImage, TruePositiveLabels, Species, Sighting, LabelEntry
 from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
     add_worker_if_not_exists, image_exists
 from noaadb.schema.schema_ops import refresh_schema
@@ -75,7 +74,7 @@ for i, row in pb_df.iterrows():
 
         e = rgb_image_name.split('_')
         e = [a for a in e if a != ""]
-        a['survey'] = "BEAUFORT2019"
+        a['survey'] = "BEAUFORT-2019"
         a['flight'] = e[4]
         a['camPos'] = e[5]
         a['timestamp'] = e[6] + e[7]
@@ -88,7 +87,7 @@ for i, row in pb_df.iterrows():
 
         e = rgb_image_name.split('_')
         e = [a for a in e if a != ""]
-        a['survey'] = "CHESS-ru"
+        a['survey'] = "CHESS-russia"
         a['flight'] = None
         a['camPos'] = e[4].split(".")[0]
         a['timestamp'] = e[2]
@@ -186,49 +185,42 @@ for i, row in pb_df.iterrows():
     sp = get_species(s,species_id)
     age_class = None if not status else status.split("-")[0]
     label_entry_ir = None
+    to_add = []
     if ir_exists and thermal_x is not None and thermal_y is not None:
-        label_entry_ir = Label(
+        label_entry_ir = TruePositiveLabels(
             image = ir_db_img,
-            species = sp,
             x1 = thermal_x, # TODO set earlier
             x2 = thermal_x,
             y1 = thermal_y,
             y2 = thermal_y,
-            age_class = age_class,
             confidence = species_confidence,
             is_shadow = pb_id is not None and pb_id[-1] == "s",
             start_date = datetime.now(),
-            hotspot_id = hotspot_id,
             worker = ir_worker,
             job = ir_job
         )
-        s.add(label_entry_ir)
-    label_entry_rgb = Label(
+        to_add.append(label_entry_ir)
+    label_entry_rgb = LabelEntry(
         image = rgb_db_img,
-        species = sp,
         x1 = x1, # TODO set earlier
         x2 = x2,
         y1 = y1,
         y2 = y2,
-        age_class = age_class,
         confidence = species_confidence,
         is_shadow = pb_id is not None and pb_id[-1] == "s",
         start_date = datetime.now(),
-        hotspot_id = pb_id if pb_id else hotspot_id,
         worker = rgb_worker,
         job = rgb_job
     )
-    s.add(label_entry_rgb)
-    s.flush()
+    to_add.append(label_entry_rgb)
 
-    l = Hotspot(
-        eo_label = None if not rgb_exists else label_entry_rgb,
-        ir_label = None if not ir_exists else label_entry_ir,
-        hs_id = pb_id if pb_id else hotspot_id,
-        eo_accepted = False,
-        ir_accepted = False  # TODO ir x1x2etc
+    l = Sighting(
+        hotspot_id=pb_id if pb_id else hotspot_id,
+        age_class=age_class,
+        species=sp
     )
-    s.add(l)
+    to_add.append(l)
+    s.add_all(to_add)
     s.commit()
     s.close()
     x=1

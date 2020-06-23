@@ -1,8 +1,9 @@
 import boto3
 from PIL import Image
-from noaadb import Session
+
+from build.lib.noaadb import Session
 from noaadb.schema.schema_ops import refresh_schema
-from noaadb.schema.models import NOAAImage, Label, Species, Hotspot
+from noaadb.schema.models import NOAAImage, TruePositiveLabels, Species, Sighting
 from noaadb.schema.queries import *
 
 from scripts.util import *
@@ -239,7 +240,7 @@ for i, row in pb_df.iterrows():
 
     label_entry_ir = None
     if ir_exists and not is_new and thermal_x is not None and thermal_y is not None:
-        label_entry_ir_l = Label(
+        label_entry_ir_l = TruePositiveLabels(
             image = ir_db_row_new,
             species = sp,
             x1 = thermal_x, # TODO set earlier
@@ -268,7 +269,7 @@ for i, row in pb_df.iterrows():
                 label_entry_ir = get_existing_label(session, label_entry_ir_l)
                 if log_existing: print("IR Label exists id=%d" % label_entry_ir_l.id)
 
-    label_entry_rgb_l = Label(
+    label_entry_rgb_l = TruePositiveLabels(
         image = rgb_db_row_new,
         species = sp,
         x1 = x1, # TODO set earlier
@@ -298,14 +299,14 @@ for i, row in pb_df.iterrows():
             if log_existing: print("RGB Label exists id=%d" % label_entry_rgb_l.id)
 
     if not removed and not (label_entry_rgb is None and label_entry_ir is None):
-        l = Hotspot(
+        l = Sighting(
             eo_label = None if not label_entry_rgb else label_entry_rgb,
             ir_label = None if not label_entry_ir or is_new else label_entry_ir,
             hs_id =  None if is_new else hotspot_id,
             eo_accepted = False,
             ir_accepted = False  # TODO ir x1x2etc
         )
-        hs = get_existing_hotspot(session, l)
+        hs = get_existing_sighting(session, l)
         if not hs:
             try:
                 session.add(l)
