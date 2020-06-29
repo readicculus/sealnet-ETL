@@ -1,23 +1,23 @@
 import glob
 import os
 from datetime import datetime
-import json
 
 import pandas as pd
 from PIL import Image
 from build.lib.noaadb import Session
-from scripts.db_rm import remove_hotspots_by_survey, remove_fps_by_survey, remove_labels_by_survey, \
-    remove_images_by_survey, remove_sightings_by_survey
-from noaadb.schema.models import NOAAImage, Species, FlightMeta, Sighting, ImageType, DISCRIMINATOR, LabelType, IRLabelEntry, EOLabelEntry
-from noaadb.schema.queries import get_image, add_job_if_not_exists, add_worker_if_not_exists, get_species, \
-    get_existing_eo_label
-from noaadb.schema.schema_ops import refresh_schema
+from noaadb.schema.models import NOAAImage, \
+    Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType
+from noaadb.schema.queries import get_image, add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label
+from scripts.ingest.kotz_2019.ingest_util import append_meta, append_species
 from scripts.util import parse_timestamp, printProgressBar
 from sqlalchemy.exc import IntegrityError
 
 transform_files = "/Downloads/viame/seal_tk/configs/pipelines/transformations/Kotz-2019-Flight-Center.h5"
 SURVEY = 'test_kotz_2019'
 JOB = 'kotz_manual_review'
+
+
+
 
 class RegisteredDetections():
     def __init__(self, image_dir, eo_file, ir_file, eo_worker, ir_worker, job, name):
@@ -81,9 +81,9 @@ class RegisteredDetections():
         if self.has_ir:
             self.ir_worker = add_worker_if_not_exists(s, "Projected", False)
 
-    def process_images(self, s):
-        rgb_images = glob.glob(os.path.join(self.image_dir, '*_rgb.jpg'))
-        append_images(s, rgb_images)
+    # def process_images(self, s):
+    #     rgb_images = glob.glob(os.path.join(self.image_dir, '*_rgb.jpg'))
+    #     append_images(s, rgb_images)
 
     def process_incorrect(self, s):
         process_labels(s, self.verified_incorrect, self.job, self.eo_worker, self.ir_worker, LabelType.FP)
@@ -98,50 +98,40 @@ fl04_C = RegisteredDetections('/data2/2019/fl04/CENT/',
                      'output_transform_4Center.h5',
                               JOB, 'fl04_C')
 
-fl05_C = RegisteredDetections('/data2/2019/fl05/CENT/',
-                     '/data2/2019/fl05/2019TestF5C_tinyYolo_eo_20190905_processed.csv',
-                     '/data2/2019/fl05/2019TestF5C_tinyYolo_ir_20190905_projected.csv',
-                     'Yolo/Gavin',
-                     'output_transform_4Center.h5',
-                              JOB, 'fl05_C')
+# fl05_C = RegisteredDetections('/data2/2019/fl05/CENT/',
+#                      '/data2/2019/fl05/2019TestF5C_tinyYolo_eo_20190905_processed.csv',
+#                      '/data2/2019/fl05/2019TestF5C_tinyYolo_ir_20190905_projected.csv',
+#                      'Yolo/Gavin',
+#                      'output_transform_4Center.h5',
+#                               JOB, 'fl05_C')
 # #
-fl01_C = RegisteredDetections('/data2/2019/fl01/CENT/',
-                     '/data2/2019/fl01/2019TestF1C_tinyYolo_eo_20190813_processed.csv',
-                     None,
-                     'Yolo/Gavin',
-                     None,
-                              JOB, 'fl01_C')
+# fl01_C = RegisteredDetections('/data2/2019/fl01/CENT/',
+#                      '/data2/2019/fl01/2019TestF1C_tinyYolo_eo_20190813_processed.csv',
+#                      None,
+#                      'Yolo/Gavin',
+#                      None,
+#                               JOB, 'fl01_C')
 
 # Notes: ir seems really bad and maybe alignment for some reason..?
-fl04_L = RegisteredDetections('/data2/2019/fl04/LEFT/',
-                     '/data2/2019/fl04/2019TestF4L_tinyYolo_eo_20190905_processed.csv',
-                     None,
-                     'Yolo/Gavin',
-                     None,
-                              JOB, 'fl04_L')
-
-fl05_L = RegisteredDetections('/data2/2019/fl05/LEFT/',
-                     '/data2/2019/fl05/2019TestF5L_tinyYolo_eo_20190905_processed.csv',
-                     '/data2/2019/fl05/2019TestF5L_tinyYolo_ir_20190905_projected.csv',
-                     'Yolo/Gavin',
-                     'output_transform_Left.h5',
-                              JOB, 'fl05_L')
+# fl04_L = RegisteredDetections('/data2/2019/fl04/LEFT/',
+#                      '/data2/2019/fl04/2019TestF4L_tinyYolo_eo_20190905_processed.csv',
+#                      None,
+#                      'Yolo/Gavin',
+#                      None,
+#                               JOB, 'fl04_L')
+#
+# fl05_L = RegisteredDetections('/data2/2019/fl05/LEFT/',
+#                      '/data2/2019/fl05/2019TestF5L_tinyYolo_eo_20190905_processed.csv',
+#                      '/data2/2019/fl05/2019TestF5L_tinyYolo_ir_20190905_projected.csv',
+#                      'Yolo/Gavin',
+#                      'output_transform_Left.h5',
+#                               JOB, 'fl05_L')
 
 # registered_list = [fl01_C, fl04_C, fl04_L, fl05_C, fl05_L]
-registered_list = [fl04_C, fl04_L, fl05_C, fl05_L]
-# registered_list = [fl01_C]
+# registered_list = [fl01_C, fl04_C, fl04_L, fl05_C, fl05_L]
+registered_list = [fl04_C]
 
-def append_species(s, species_id):
-    sp = get_species(s, species_id)
-    if not sp:
-        sp = Species(name=species_id)
-        s.add(sp)
-        try:
-            s.flush()
-        except:
-            s.rollback()
-            sp = get_species(s, species_id)
-    return sp
+
 
 def append_images(session, images):
     j = 0
@@ -167,9 +157,6 @@ def append_images(session, images):
 
             meta_name = '_'.join(name_parts[:-1])+"_meta.json"
             ir_name = '_'.join(name_parts[:-1])+"_ir.tif"
-            ir_meta = None
-            rgb_meta = None
-            w_rgb,h_rgb = None, None
             w_ir,h_ir = None, None
             ir_exists = True
             try:
@@ -179,31 +166,7 @@ def append_images(session, images):
             except:
                 ir_exists = False
 
-            flight_meta = None
-            try:
-                meta = None
-                with open(os.path.join(base_path, meta_name), 'r') as f:
-                    meta = f.read()
-                meta = json.loads(meta)
-                rgb_meta = {i:meta[i] for i in meta if i == 'rgb'}
-                ir_meta = {i:meta[i] for i in meta if i == 'ir'}
-                evt_meta = {i:meta[i] for i in meta if i == 'evt'}
-                ins_meta = {i:meta[i] for i in meta if i == 'ins'}
-                flight_meta = FlightMeta(
-                    evt=evt_meta,
-                    ins=ins_meta,
-                    file_name=meta_name
-                )
-                session.add(flight_meta)
-                session.flush()
-                w_rgb = int(rgb_meta['rgb']['width'])
-                h_rgb = int(rgb_meta['rgb']['height'])
-            except Exception as e:
-                print(e)
-                im = Image.open(image_path)
-                w_rgb = im.width
-                h_rgb = im.height
-
+            rgb_obj, ir_obj = append_meta(session, os.path.join(base_path, meta_name))
             if ir_exists:
                 ir_row = NOAAImage(
                     file_name=ir_name,
@@ -216,8 +179,7 @@ def append_images(session, images):
                     flight=flight,
                     cam_position=cam,
                     timestamp=timestamp,
-                    image_meta=ir_meta,
-                    flight_meta=flight_meta
+                    flight_meta=ir_obj,
                 )
                 session.add(ir_row)
                 try:
@@ -230,15 +192,14 @@ def append_images(session, images):
                 file_name=file_name,
                 file_path=image_path,
                 type=ImageType.RGB,
-                width= w_rgb,
-                height=h_rgb,
+                width= im.width,
+                height=im.height,
                 depth=3,
                 survey=SURVEY,
                 flight=flight,
                 cam_position=cam,
                 timestamp=timestamp,
-                image_meta=rgb_meta,
-                flight_meta=flight_meta
+                flight_meta=rgb_obj
             )
             session.add(db_row)
             try:
@@ -369,8 +330,8 @@ def add_all():
     for registered_pair in registered_list:
         registered_pair.print_info()
         registered_pair.create_job(s)
-        print("Processing all images")
-        registered_pair.process_images(s)
+        # print("Processing all images")
+        # registered_pair.process_images(s)
         print("Correct labels (Verified)")
         registered_pair.process_correct(s)
         print("Incorrect labels (FP)")
