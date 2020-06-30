@@ -64,6 +64,8 @@ def append_header(session, header_dict, fc_id):
 
 def add_image(s, path, im_type, fc_id, w=None, h=None,
               is_bigendian=None,step=None,encoding=None,meta_header=None,meta_instrument=None,meta_evt=None):
+    if path is None:
+        return
     if w is None or h is None:
         w, h = get_image_size(path)
     flight, cam, timestamp = image_fn_parser(path)
@@ -138,7 +140,6 @@ def append_meta(session, meta_file,fc_id, eo_path, ir_path):
             survey=fc_id.survey
         )
         session.add(ins_obj)
-        # session.flush()
 
     evt_obj = None
     if 'evt' in meta:
@@ -157,7 +158,6 @@ def append_meta(session, meta_file,fc_id, eo_path, ir_path):
             survey=fc_id.survey
         )
         session.add(evt_obj)
-        # session.flush()
 
     header_obj = None
     if 'rgb' in meta:
@@ -173,8 +173,6 @@ def append_meta(session, meta_file,fc_id, eo_path, ir_path):
                   meta_header=header_obj,
                   meta_instrument=ins_obj,
                   meta_evt=evt_obj)
-        # session.add(rgb_obj)
-        # session.flush()
     if ins_obj is not None:
         if ins_obj.header_id is None:
             ins_obj.meta_header = header_obj
@@ -192,5 +190,3 @@ def append_meta(session, meta_file,fc_id, eo_path, ir_path):
                   meta_header=header_obj,
                   meta_instrument=ins_obj,
                   meta_evt=evt_obj)
-        # session.add(ir_obj)
-        # session.flush()

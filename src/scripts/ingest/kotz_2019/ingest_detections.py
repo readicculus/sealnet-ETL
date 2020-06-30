@@ -8,6 +8,7 @@ from build.lib.noaadb import Session
 from noaadb.schema.models import NOAAImage, \
     Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType
 from noaadb.schema.queries import get_image, add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label
+from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
 from scripts.ingest.kotz_2019.ingest_util import append_meta, append_species
 from scripts.util import parse_timestamp, printProgressBar
 from sqlalchemy.exc import IntegrityError
@@ -91,12 +92,15 @@ class RegisteredDetections():
     def process_correct(self, s):
         process_labels(s, self.verified_correct, self.job, self.eo_worker, self.ir_worker, LabelType.TP)
 
+datasets = [fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset]
 fl04_C = RegisteredDetections('/data2/2019/fl04/CENT/',
                      '/data2/2019/fl04/2019TestF4C_tinyYolo_eo_20190904_processed.csv',
                      '/data2/2019/fl04/2019TestF4C_tinyYolo_ir_20190904_projected.csv',
                      'Yolo/Gavin',
                      'output_transform_4Center.h5',
                               JOB, 'fl04_C')
+#sed -i 's/_rgb\.tif/_rgb\.jpg/g' 2019TestF5C_tinyYolo_eo_20190905_processed.csv
+#ls -d $PWD/*.tif > 2019TestF5C_tinyYolo_eo_20190905_original_imagesIR.txt
 
 # fl05_C = RegisteredDetections('/data2/2019/fl05/CENT/',
 #                      '/data2/2019/fl05/2019TestF5C_tinyYolo_eo_20190905_processed.csv',

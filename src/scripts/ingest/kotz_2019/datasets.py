@@ -3,14 +3,14 @@ import os
 
 
 class FlightCam():
-    def __init__(self, dir, eo_label_file, ir_label_file, ignore=False):
+    def __init__(self, dir, eo_label_file, ir_label_file, transform=None):
         self.dir = dir
         self.eo_label_file = eo_label_file
         self.ir_label_file = ir_label_file
-        self.ignore = ignore
         self.id_dict = {"CENT": "C", "LEFT": "L", "RIGHT": "R"}
     def id(self):
         return self.id_dict[self.dir]
+
 
 class KotzFlightDataset():
     def __init__(self, root_dir, flight, flight_cam_list):
@@ -20,6 +20,18 @@ class KotzFlightDataset():
         self.flight_cams = {}
         for cam in flight_cam_list:
             self.flight_cams[cam.dir] = cam
+
+    def get_cam_eo_detections_file(self, cam_name):
+        cam = self.flight_cams[cam_name]
+        if cam.eo_label_file is None:
+            return None
+        return os.path.join(self.dir, cam.dir, cam.eo_label_file)
+
+    def get_cam_ir_detections_file(self, cam_name):
+        cam = self.flight_cams[cam_name]
+        if cam.ir_label_file is None:
+            return None
+        return os.path.join(self.dir, cam.dir, cam.ir_label_file)
 
     def id(self):
         return self.flight
@@ -72,25 +84,47 @@ class KotzFlightDataset():
 
         return list(match_dict.values())
 
+output_transform_Left = '/home/yuval/Documents/XNOR/sealnet/models/darknet/pydn/register/output_transform_Left.h5'
+Flight5C_gmb = '/home/yuval/Documents/XNOR/sealnet/models/darknet/pydn/register/Kotz-2019-Flight5C_gmb.h5'
+output_transform_4Center = '/home/yuval/Documents/XNOR/sealnet/models/darknet/pydn/register/output_transform_4Center.h5'
 
-fl06_C = FlightCam('CENT','x', 'x')
-fl06_L = FlightCam('LEFT','x', 'x')
-fl06_R = FlightCam('RIGHT','x', 'x')
+
+fl07_C = FlightCam('CENT','2019TestF7C_tinyYolo_eo_20200219_processed.csv', None)
+fl07_L = FlightCam('LEFT','2019TestF7L_tinyYolo_eo_20200221_processed.csv', None)
+fl07_dataset = KotzFlightDataset('/data2/2019/', 'fl07', [fl07_C, fl07_L])
+
+
+fl06_C = FlightCam('CENT',
+                   '2019TestF6C_tinyYolo_eo_20191205_processed.csv',
+                   '2019TestF6C_tinyYolo_ir_20191205_projected.csv',
+                   transform=Flight5C_gmb)
+
+fl06_L = FlightCam('LEFT','2019TestF6L_tinyYolo_eo_20191205_processed.csv',
+                   '2019TestF6L_tinyYolo_ir_20191205_projected.csv',
+                   transform=output_transform_Left)
+fl06_R = FlightCam('RIGHT',None,None)
 fl06_dataset = KotzFlightDataset('/data2/2019/', 'fl06', [fl06_C, fl06_L, fl06_R])
 
-fl05_C = FlightCam('CENT','x', 'x')
-fl05_L = FlightCam('LEFT','x', 'x')
-fl05_R = FlightCam('RIGHT','x', 'x')
+fl05_C = FlightCam('CENT',
+                   '2019TestF5C_tinyYolo_eo_20190905_processed.csv',
+                   '2019TestF5C_tinyYolo_ir_20190905_projected.csv',
+                   transform=Flight5C_gmb)
+fl05_L = FlightCam('LEFT',
+                   '2019TestF5L_tinyYolo_eo_20190905_processed.csv',
+                   '2019TestF5L_tinyYolo_ir_20190905_projected.csv',
+                   output_transform_Left)
+fl05_R = FlightCam('RIGHT', None, None)
 fl05_dataset = KotzFlightDataset('/data2/2019/', 'fl05', [fl05_C, fl05_L, fl05_R])
 
-fl04_C = FlightCam('CENT','x', 'x')
-fl04_L = FlightCam('LEFT','x', 'x')
-fl04_R = FlightCam('RIGHT','x', 'x')
+fl04_C = FlightCam('CENT','2019TestF4C_tinyYolo_eo_20190904_processed.csv', '2019TestF4C_tinyYolo_ir_20190904_projected.csv')
+fl04_L = FlightCam('LEFT','2019TestF4L_tinyYolo_eo_20190905_processed.csv', None)
+fl04_R = FlightCam('RIGHT',None,None)
 fl04_dataset = KotzFlightDataset('/data2/2019/', 'fl04', [fl04_C, fl04_L, fl04_R])
 
-fl01_C = FlightCam('CENT','2019TestF1C_tinyYolo_eo_20190813_processed.csv', '2019TestF1C_tinyYolo_ir_20190813_projected.csv')
+fl01_C = FlightCam('CENT','2019TestF1C_tinyYolo_eo_20190813_processed.csv',
+                   '2019TestF1C_tinyYolo_ir_20190813_projected.csv')
 fl01_dataset = KotzFlightDataset('/data2/2019/', 'fl01', [fl01_C])
 
 
 
-kotz_datasets = [fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset]
+kotz_datasets = [fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset]
