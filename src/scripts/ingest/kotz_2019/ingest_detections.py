@@ -1,25 +1,21 @@
-import glob
 import os
 from datetime import datetime
 
+import h5py
 import pandas as pd
-from PIL import Image
-from sqlalchemy import create_engine
-
 from build.lib.noaadb import Session
-from noaadb import DATABASE_URI
 from noaadb.schema.models import \
     Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
-    LabelEntry
+    LabelEntry, Homography
 from noaadb.schema.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
 from noaadb.schema.schema_ops import *
 from scripts.ingest.kotz_2019 import JOB, SURVEY
 from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
-from scripts.ingest.kotz_2019.ingest_util import append_meta, append_species
-from scripts.util import parse_timestamp, printProgressBar
+from scripts.ingest.kotz_2019.ingest_util import append_species
+from scripts.util import printProgressBar
 from sqlalchemy.exc import IntegrityError
-
+import numpy as np
 transform_files = "/Downloads/viame/seal_tk/configs/pipelines/transformations/Kotz-2019-Flight-Center.h5"
 
 
@@ -28,8 +24,8 @@ class RegisteredDetections():
         self.eo_file = dataset.get_cam_eo_detections_file(cam)
         self.ir_file = dataset.get_cam_ir_detections_file(cam)
         self.eo_worker = eo_worker
-        transform = dataset.get_cam_transform(cam)
-        self.ir_worker = os.path.basename(transform) if transform else None
+        self.transform_h5 = dataset.get_cam_transform(cam)
+        self.ir_worker = os.path.basename(self.transform_h5) if self.transform_h5 else None
         self.job = job
         self.dataset = dataset
         self.name = '%s_%s' % (self.dataset.id(), cam)
@@ -98,7 +94,25 @@ class RegisteredDetections():
         self.eo_worker = add_worker_if_not_exists(s, "Yolo/Gavin", True)
         if self.has_ir:
             self.ir_worker = add_worker_if_not_exists(s, "Projected VIAME", False)
-            transform = self.dataset.get_cam_transform(self.cam)
+            cam = s.query(Camera).filter_by(cam_name=self.dataset.get_cam_id(self.cam)) \
+            .join(Flight).filter_by(flight_name=self.dataset.id()) \
+            .join(Survey).filter_by(name=SURVEY).first()
+
+            H = s.query(Homography).filter_by(file_name=os.path.basename(self.transform_h5)).filter_by(camera_id=cam.id).first()
+            if not H:
+                with h5py.File(self.transform_h5, "r") as f:
+                    # List all groups
+                    data = f['/']['TransformGroup']['0']['TransformParameters']
+                    affine = np.array(data.value)
+                    h00, h10, h01, h11, h02, h12 = affine
+                    H = Homography(h00=h00, h01=h01, h02=h02,
+                                   h10=h10, h11=h11, h12=h12,
+                                   h20=0.,  h21=0.,  h22=1.,
+                                   file_name=os.path.basename(self.transform_h5),
+                                   file_path=self.transform_h5,
+                                   camera_id=cam.id)
+                    s.add(H)
+                    s.flush()
 
     def process_incorrect(self, s):
         process_labels(s, self.verified_incorrect, self.job, self.eo_worker, self.ir_worker, LabelType.FP)
@@ -198,7 +212,6 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
         im_eo = s.query(EOImage).filter_by(file_name=os.path.basename(row["image_eo"])).first()
         label_entry_eo, label_entry_ir = None, None
 
-        # sighting.labels.extend([label_entry_eo])
         if im_eo is None:
             raise("ERROR %s" % os.path.basename(row["image_eo"]))
         else:
@@ -213,8 +226,6 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
                     print("ERROR %s" % os.path.basename(row["image_ir"]))
                 else:
                     label_entry_ir = add_label(s, row, im_ir, ir_worker, job, species, 'ir')
-
-                    # sighting.labels.extend([label_entry_ir])
 
         sighting = Sighting(
             age_class=age_class,
@@ -252,12 +263,14 @@ def add_all():
         print("Incorrect labels (FP)")
         registered_pair.process_incorrect(s)
 
-if True:
+if False:
     engine = create_engine(DATABASE_URI)
     drop_ml_schema(engine)
     drop_label_schema(engine)
     create_label_schema(engine)
     create_ml_schema(engine)
+    Homography.__table__.drop(bind=engine, checkfirst=True)
+    Homography.__table__.create(bind=engine, checkfirst=True)
 
 s = Session()
 
