@@ -157,7 +157,7 @@ for i, row in pb_df.iterrows():
         rgb_db_row_new= NOAAImage(
             file_name=rgb_image_name,
             file_path=rgb_path,
-            type=ImageType.RGB,
+            type=ImageType.EO,
             width=rgb_im.width,
             height=rgb_im.height,
             depth=rgb_im.layers,

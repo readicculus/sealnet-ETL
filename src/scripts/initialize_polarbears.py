@@ -139,7 +139,7 @@ for i, row in pb_df.iterrows():
         rgb_db_obj = NOAAImage(
             file_name=rgb_image_name,
             file_path=rgb_path,
-            type=ImageType.RGB,
+            type=ImageType.EO,
             width=rgb_im.width,
             height=rgb_im.height,
             depth=rgb_im.layers,
@@ -210,7 +210,7 @@ for i, row in pb_df.iterrows():
         x2 = x2,
         y1 = y1,
         y2 = y2,
-        discriminator=ImageType.RGB,
+        discriminator=ImageType.EO,
         confidence = species_confidence,
         is_shadow = is_shadow,
         start_date = datetime.now(),
