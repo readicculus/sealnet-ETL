@@ -1,25 +1,22 @@
+import logging
 import os
 
-from sqlalchemy import and_, engine
-from sqlalchemy.orm import scoped_session, sessionmaker
-
-from build.lib.noaadb import Session
-from noaadb.schema.models import ImageType, Flight, Survey, Camera
-from noaadb.schema.queries import add_or_get_cam_flight_survey
-from scripts.get_image_size import get_image_size
-from scripts.ingest.kotz_2019.ingest_util import append_meta, image_fn_parser
-from scripts.ingest.kotz_2019.datasets import kotz_datasets, fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, \
+from noaadb import Session
+from noaadb.schema.models import Flight, Survey, Camera
+from noaadb.utils.queries import add_or_get_cam_flight_survey
+from scripts.ingest.kotz_2019.ingest_util import append_meta, setup_logger, log_file_base
+from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, \
     fl01_dataset
 from scripts.util import printProgressBar
 
 SURVEY = 'test_kotz_2019'
 
-
-
 def process_cam(s, dataset, cam):
+    logging.info("=== Processing %s %s ===" % (dataset.id(), cam))
     matches = dataset.get_cam_eo_ir_meta_matches(cam)
 
     total = len(matches)
+    logging.info("%d matches" % (total))
 
     cam = add_or_get_cam_flight_survey(s,dataset.get_cam_id(cam), dataset.flight, SURVEY)
     s.commit()
@@ -43,6 +40,8 @@ def process_cam(s, dataset, cam):
             s.expunge_all()
     s.commit()
     s.expunge_all()
+    logging.info("=== COMPLETED %s %s ===" % (dataset.id(), cam))
+
 
 def try_delete(dataset, cam):
     tries = 0
@@ -59,10 +58,11 @@ def try_delete(dataset, cam):
             s2.delete(cam_obj)
 
             s2.commit()
-            print("Deleted %s %s %s" %(cam_obj.cam_name,cam_obj.flight.flight_name,cam_obj.flight.survey.name))
+            logging.info("Deleted %s %s %s" %(cam_obj.cam_name,cam_obj.flight.flight_name,cam_obj.flight.survey.name))
             s2.close()
             return True
         except Exception as e:
+            logging.error("FAILED TO DELETE %s %s %s" %(cam_obj.cam_name,cam_obj.flight.flight_name,cam_obj.flight.survey.name))
             s2.rollback()
             s2.close()
             print(e)
@@ -74,19 +74,25 @@ def try_delete(dataset, cam):
 Session.configure(autoflush=False, expire_on_commit=False)
 s = Session()
 
-datasets = [fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset]
+datasets = [fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset]#, fl01_dataset]
+# datasets = [fl01_dataset]
 # datasets = [fl01_dataset, fl07_dataset]
 delete_first = True
 for dataset in datasets:
     print("Processing %s" %dataset.flight)
     cams = dataset.get_cam_names()
+
     for cam in cams:
+        lf = os.path.join(log_file_base, 'ingest_imagery_%s%s.log' % (dataset.id(), cam))
+        setup_logger(lf)
+
         if delete_first:
             try_delete(dataset, cam)
 
         print("Cam %s" % cam)
         process_cam(s, dataset, cam)
     print()
+
 s.close()
 #
 # for meta in meta_list:

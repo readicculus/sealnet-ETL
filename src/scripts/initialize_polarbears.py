@@ -2,11 +2,10 @@ import boto3
 from PIL import Image
 
 from build.lib.noaadb import Session
-from noaadb.schema.models import NOAAImage, Species, Sighting, LabelEntry, IRLabelEntry, EOLabelEntry, ImageType, \
+from noaadb.schema.models import NOAAImage, Species, Sighting, IRLabelEntry, EOLabelEntry, ImageType, \
     LabelType
-from noaadb.schema.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
+from noaadb.utils.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
     add_worker_if_not_exists, image_exists
-from noaadb.schema.schema_ops import refresh_schema
 from scripts.util import *
 from dateutil import parser
 

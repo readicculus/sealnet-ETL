@@ -1,21 +1,22 @@
+import logging
 import os
 from datetime import datetime
 
 import h5py
 import pandas as pd
-from build.lib.noaadb import Session
+from noaadb import Session
 from noaadb.schema.models import \
     Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
     LabelEntry, Homography
-from noaadb.schema.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
+from noaadb.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
-from noaadb.schema.schema_ops import *
 from scripts.ingest.kotz_2019 import JOB, SURVEY
 from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
-from scripts.ingest.kotz_2019.ingest_util import append_species
+from scripts.ingest.kotz_2019.ingest_util import append_species, setup_logger, log_file_base
 from scripts.util import printProgressBar
 from sqlalchemy.exc import IntegrityError
 import numpy as np
+
 transform_files = "/Downloads/viame/seal_tk/configs/pipelines/transformations/Kotz-2019-Flight-Center.h5"
 
 
@@ -45,10 +46,12 @@ class RegisteredDetections():
             ir_df.columns = [str(col) + '_ir' for col in ir_df.columns]
 
             merged = pd.merge(eo_df, ir_df, left_on='id_eo', right_on='id_ir', how='left')
-            merged.drop(['id_ir', 'conf2_ir', 'conf2_eo', 'species_ir', 'idk_ir', 'idk_eo', 'num_dets_ir'], axis=1, inplace=True)
+            merged.drop(['id_ir', 'conf2_ir', 'conf2_eo', 'species_ir', 'idk_ir', 'idk_eo', 'num_dets_ir'], axis=1,
+                        inplace=True)
             # assert(len(merged) - merged.image_ir.isnull().sum() - len(ir_df) == 0)
             if len(merged) - merged.image_ir.isnull().sum() - len(ir_df) != 0:
-                print ("len(merged) - merged.image_ir.isnull().sum() - len(ir_df) = %d" % (len(merged) - merged.image_ir.isnull().sum() - len(ir_df)))
+                print("len(merged) - merged.image_ir.isnull().sum() - len(ir_df) = %d" % (
+                            len(merged) - merged.image_ir.isnull().sum() - len(ir_df)))
             self.data = merged
             self.data.loc[self.data['confidence_ir'] > 1, 'confidence_ir'] = 1
             int_cols_ir = ['x1_ir', 'y1_ir', 'x2_ir', 'y2_ir']
@@ -58,9 +61,8 @@ class RegisteredDetections():
         int_cols_eo = ['x1_eo', 'y1_eo', 'x2_eo', 'y2_eo']
         self.data[int_cols_eo] = self.data[int_cols_eo].round()
 
-
         self.data.rename(columns={'species_eo': 'species', 'id_eo': 'id'}, inplace=True)
-        not_correct = self.data.loc[self.data ['species'] == 'incorrect']
+        not_correct = self.data.loc[self.data['species'] == 'incorrect']
         self.verified_incorrect = not_correct.loc[not_correct['confidence_eo'] >= .5]
         self.verified_correct = self.data.loc[self.data['species'] != 'incorrect']
 
@@ -77,7 +79,8 @@ class RegisteredDetections():
         print()
 
     def delete(self, s):
-        eo_labels = s.query(LabelEntry).join(EOImage).join(HeaderMeta).join(Camera).filter_by(cam_name=self.dataset.get_cam_id(self.cam)) \
+        eo_labels = s.query(LabelEntry).join(EOImage).join(HeaderMeta).join(Camera).filter_by(
+            cam_name=self.dataset.get_cam_id(self.cam)) \
             .join(Flight).filter_by(flight_name=self.dataset.id()) \
             .join(Survey).filter_by(name=SURVEY).all()
         ir_labels = s.query(LabelEntry).join(IRImage).join(HeaderMeta).join(Camera).filter_by(
@@ -95,10 +98,11 @@ class RegisteredDetections():
         if self.has_ir:
             self.ir_worker = add_worker_if_not_exists(s, "Projected VIAME", False)
             cam = s.query(Camera).filter_by(cam_name=self.dataset.get_cam_id(self.cam)) \
-            .join(Flight).filter_by(flight_name=self.dataset.id()) \
-            .join(Survey).filter_by(name=SURVEY).first()
+                .join(Flight).filter_by(flight_name=self.dataset.id()) \
+                .join(Survey).filter_by(name=SURVEY).first()
 
-            H = s.query(Homography).filter_by(file_name=os.path.basename(self.transform_h5)).filter_by(camera_id=cam.id).first()
+            H = s.query(Homography).filter_by(file_name=os.path.basename(self.transform_h5)).filter_by(
+                camera_id=cam.id).first()
             if not H:
                 with h5py.File(self.transform_h5, "r") as f:
                     # List all groups
@@ -107,7 +111,7 @@ class RegisteredDetections():
                     h00, h10, h01, h11, h02, h12 = affine
                     H = Homography(h00=h00, h01=h01, h02=h02,
                                    h10=h10, h11=h11, h12=h12,
-                                   h20=0.,  h21=0.,  h22=1.,
+                                   h20=0., h21=0., h22=1.,
                                    file_name=os.path.basename(self.transform_h5),
                                    file_path=self.transform_h5,
                                    camera_id=cam.id)
@@ -120,6 +124,7 @@ class RegisteredDetections():
     def process_correct(self, s):
         process_labels(s, self.verified_correct, self.job, self.eo_worker, self.ir_worker, LabelType.TP)
 
+
 fl07_L = RegisteredDetections(fl07_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 fl07_C = RegisteredDetections(fl07_dataset, 'Yolo/Gavin', JOB, 'CENT')
 
@@ -127,22 +132,18 @@ fl06_L = RegisteredDetections(fl06_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 fl06_C = RegisteredDetections(fl06_dataset, 'Yolo/Gavin', JOB, 'CENT')
 
 fl05_C = RegisteredDetections(fl05_dataset, 'Yolo/Gavin', JOB, 'CENT')
-fl05_L = RegisteredDetections(fl05_dataset,'Yolo/Gavin', JOB, 'LEFT')
+fl05_L = RegisteredDetections(fl05_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 
 fl04_C = RegisteredDetections(fl04_dataset, 'Yolo/Gavin', JOB, 'CENT')
 fl04_L = RegisteredDetections(fl04_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 
 fl01_C = RegisteredDetections(fl01_dataset, 'Yolo/Gavin', JOB, 'CENT')
 
-
-
-
-registered_list = [fl07_L, fl07_C, fl06_L, fl06_C, fl05_C, fl05_L, fl04_C, fl04_L, fl01_C]
-
+registered_list = [fl07_L, fl07_C, fl06_L, fl06_C, fl05_C, fl05_L, fl04_C, fl04_L]#, fl01_C]
 
 
 def add_label(s, row, im, worker, job, species, type):
-    iseo = (type=='eo')
+    iseo = (type == 'eo')
     disc = ImageType.EO if iseo else ImageType.IR
     LabelClass = EOLabelEntry if iseo else IRLabelEntry
     label_entry = LabelClass(
@@ -154,7 +155,7 @@ def add_label(s, row, im, worker, job, species, type):
         species=species,
         discriminator=disc
     )
-    check = get_existing_eo_label(s, label_entry) if iseo else get_existing_ir_label(s,label_entry)
+    check = get_existing_eo_label(s, label_entry) if iseo else get_existing_ir_label(s, label_entry)
     if check is not None:
         return check
     label_entry = LabelClass(
@@ -182,26 +183,27 @@ def add_label(s, row, im, worker, job, species, type):
 
     return label_entry
 
+
 def process_labels(s, rows, job, eo_worker, ir_worker, disc):
     species_map = {'unknown_seal': 'UNK Seal',
                    'unknown_pup': 'UNK Seal',
                    'ringed_seal': 'Ringed Seal',
-                   'ringed_pup':'Ringed Seal',
+                   'ringed_pup': 'Ringed Seal',
                    'bearded_seal': 'Bearded Seal',
-                   'bearded_pup':'Bearded Seal',
-                   'animal':'animal',
-                   'Ringed Seal':'Ringed Seal',
+                   'bearded_pup': 'Bearded Seal',
+                   'animal': 'animal',
+                   'Ringed Seal': 'Ringed Seal',
                    'Bearded Seal': 'Bearded Seal',
                    'Polar Bear': 'Polar Bear',
                    'incorrect': 'falsepositive'}
 
     total = len(rows)
-    num_ir_missing= 0
-    j= 0
+    num_ir_missing = 0
+    j = 0
     for i, row in rows.iterrows():
         if j % 10 == 0:
             printProgressBar(j, total, prefix='Progress:', suffix='Complete', length=50)
-        j+=1
+        j += 1
         species_id = "UNK" if pd.isnull(row.species) else species_map[row.species]
         is_pup = not pd.isnull(row.species) and 'pup' in row.species
         age_class = "Pup" if is_pup else "Adult"
@@ -213,7 +215,7 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
         label_entry_eo, label_entry_ir = None, None
 
         if im_eo is None:
-            raise("ERROR %s" % os.path.basename(row["image_eo"]))
+            raise ("ERROR %s" % os.path.basename(row["image_eo"]))
         else:
             label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species, 'eo')
 
@@ -249,28 +251,34 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
     print("%d images have no IR/not aligned" % num_ir_missing)
 
 
-
-
 def add_all():
     # n=0
+
     for registered_pair in registered_list:
         registered_pair.delete(s)
     for registered_pair in registered_list:
+        fl_cam=(registered_pair.dataset.id(), registered_pair.cam)
+        lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
+        setup_logger(lf)
+        logging.info("=== Processing %s %s ===" % fl_cam)
         registered_pair.print_info()
         registered_pair.create_job(s)
         print("Correct labels (Verified)")
         registered_pair.process_correct(s)
         print("Incorrect labels (FP)")
         registered_pair.process_incorrect(s)
+        logging.info("=== COMPLETED %s %s ===" % fl_cam)
 
-if False:
-    engine = create_engine(DATABASE_URI)
-    drop_ml_schema(engine)
-    drop_label_schema(engine)
-    create_label_schema(engine)
-    create_ml_schema(engine)
-    Homography.__table__.drop(bind=engine, checkfirst=True)
-    Homography.__table__.create(bind=engine, checkfirst=True)
+
+
+# if False:
+#     engine = create_engine(DATABASE_URI)
+#     drop_ml_schema(engine)
+#     drop_label_schema(engine)
+#     create_label_schema(engine)
+#     create_ml_schema(engine)
+#     Homography.__table__.drop(bind=engine, checkfirst=True)
+#     Homography.__table__.create(bind=engine, checkfirst=True)
 
 s = Session()
 

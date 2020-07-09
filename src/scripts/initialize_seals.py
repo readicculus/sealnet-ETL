@@ -2,10 +2,9 @@ import boto3
 from PIL import Image
 
 from build.lib.noaadb import Session
-from noaadb.schema.schema_ops import refresh_schema
-from noaadb.schema.models import NOAAImage, Species, Sighting, IRLabelEntry, EOLabelEntry, \
-    LabelType, ImageType
-from noaadb.schema.queries import *
+from noaadb.utils.schema_ops import refresh_schema
+from noaadb.schema.models import NOAAImage, LabelType, ImageType
+from noaadb.utils.queries import *
 
 from scripts.util import *
 refresh = False
