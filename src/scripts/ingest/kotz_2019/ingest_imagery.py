@@ -3,7 +3,7 @@ import os
 
 from noaadb import Session
 from noaadb.schema.models import Flight, Survey, Camera
-from noaadb.utils.queries import add_or_get_cam_flight_survey
+from noaadb.schema.utils.queries import add_or_get_cam_flight_survey
 from scripts.ingest.kotz_2019.ingest_util import append_meta, setup_logger, log_file_base
 from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, \
     fl01_dataset

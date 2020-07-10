@@ -4,26 +4,20 @@ from datetime import datetime
 
 import h5py
 import pandas as pd
-from sqlalchemy import create_engine
-
-from noaadb import Session, DATABASE_URI
+from noaadb import Session
 from noaadb.schema.models import \
     Sighting, IRLabelEntry, EOLabelEntry, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
     LabelEntry, Homography
 from noaadb.schema.models.label_data import LabelType
 from noaadb.schema.models.survey_data import ImageType
-from noaadb.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
+from noaadb.schema.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
-from noaadb.utils.schema_ops import drop_ml_schema, drop_label_schema, create_label_schema, create_ml_schema
 from scripts.ingest.kotz_2019 import JOB, SURVEY
 from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
 from scripts.ingest.kotz_2019.ingest_util import append_species, setup_logger, log_file_base
 from scripts.util import printProgressBar
 from sqlalchemy.exc import IntegrityError
 import numpy as np
-
-transform_files = "/Downloads/viame/seal_tk/configs/pipelines/transformations/Kotz-2019-Flight-Center.h5"
-
 
 class RegisteredDetections():
     def __init__(self, dataset, eo_worker, job, cam):

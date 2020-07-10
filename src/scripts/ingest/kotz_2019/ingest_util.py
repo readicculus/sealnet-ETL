@@ -4,7 +4,7 @@ import os
 
 from noaadb.schema.models import Species, EventMeta, HeaderMeta, InstrumentMeta, EOImage, IRImage, HeaderGroup
 from noaadb.schema.models.survey_data import ImageType
-from noaadb.utils.queries import get_species
+from noaadb.schema.utils.queries import get_species
 from scripts.get_image_size import get_image_size
 from scripts.util import parse_timestamp
 
