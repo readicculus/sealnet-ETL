@@ -96,103 +96,107 @@ def add_image(s, path, im_type, w=None, h=None,
     return im, True
 
 def append_meta(session, meta_file,camera, eo_path, ir_path):
-    if meta_file is None:
-        return None, None
-    if not os.path.exists(meta_file) or '_ST_' in meta_file:
-        return None, None
-    meta = None
+    meta_exists = meta_file is not None
+    meta = {}
     try:
         with open(os.path.join(meta_file), 'r') as f:
             meta = f.read()
             meta = json.loads(meta)
     except:
-        print("Could not read %s" % meta_file)
-        return None, None
+        logging.info("Could not find metafile %s" %meta_file)
+        meta_exists = False
+        meta = {}
+
     eo_header_obj = None
     ir_header_obj = None
     evt_header_obj = None
     ins_header_obj = None
-    if 'rgb' in meta and 'header' in meta['rgb']:
-        eo_header_obj = append_header(session, meta['rgb']['header'], camera)
-    if 'ir' in meta and 'header' in meta['ir']:
-        ir_header_obj = append_header(session, meta['ir']['header'], camera)
-    if 'evt' in meta and 'header' in meta['evt']:
-        evt_header_obj = append_header(session, meta['evt']['header'], camera)
-    if 'ins' in meta and 'header' in meta['ins']:
-        ins_header_obj = append_header(session, meta['ins']['header'], camera)
-    if eo_header_obj is None:
-        logging.error("eo_header_obj is None : %s\n" % meta_file)
+    if meta_exists:
+        if 'rgb' in meta and 'header' in meta['rgb']:
+            eo_header_obj = append_header(session, meta['rgb']['header'], camera)
+        if 'ir' in meta and 'header' in meta['ir']:
+            ir_header_obj = append_header(session, meta['ir']['header'], camera)
+        if 'evt' in meta and 'header' in meta['evt']:
+            evt_header_obj = append_header(session, meta['evt']['header'], camera)
+        if 'ins' in meta and 'header' in meta['ins']:
+            ins_header_obj = append_header(session, meta['ins']['header'], camera)
+        if eo_header_obj is None:
+            logging.error("eo_header_obj is None : %s\n" % meta_file)
 
-    # eo header and ir header should be same I think
-    # evt header should also be the same because it uses time of event sent not time of image received
-    # instrument header is a bit different because i guess it measures and uses the time of measurment as the header
-    if ir_header_obj is not None and ir_header_obj.stamp != 0:
-        logging.error("ir_header_obj.stamp != 0 : %s\n" % meta_file)
+        # eo header and ir header should be same I think
+        # evt header should also be the same because it uses time of event sent not time of image received
+        # instrument header is a bit different because i guess it measures and uses the time of measurment as the header
+        if ir_header_obj is not None and ir_header_obj.stamp != 0:
+            logging.error("ir_header_obj.stamp != 0 : %s\n" % meta_file)
 
-    has_ir_header = ir_header_obj is not None and ir_header_obj.stamp != 0
-    has_eo_header = eo_header_obj is not None
-    has_evt_header = evt_header_obj is not None
-    has_ins_header = ins_header_obj is not None
-    logging.info("has_ir_header: %s - "
-                 "has_eo_header: %s - "
-                 "has_evt_header: %s - "
-                 "has_ins_header: %s" %  (has_ir_header, has_eo_header, has_evt_header, has_ins_header))
+        has_ir_header = ir_header_obj is not None and ir_header_obj.stamp != 0
+        has_eo_header = eo_header_obj is not None
+        has_evt_header = evt_header_obj is not None
+        has_ins_header = ins_header_obj is not None
+        logging.info("has_ir_header: %s - "
+                     "has_eo_header: %s - "
+                     "has_evt_header: %s - "
+                     "has_ins_header: %s" %  (has_ir_header, has_eo_header, has_evt_header, has_ins_header))
 
-    if not has_eo_header and not has_ir_header:
-        ir_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
-        eo_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
-        used_header = 'evt_header' if evt_header_obj else 'ins_header'
-        logging.error("ERROR: no ir_header or eo_header %s" % meta_file)
-        logging.info("USING: for ir_header and eo_header using %s" % used_header)
-    elif not has_eo_header:
-        eo_header_obj = ir_header_obj
-        logging.info("USING: for eo_header using ir_header")
-    elif not has_ir_header:
-        ir_header_obj = eo_header_obj
-        logging.info("USING: for ir_header using eo_header")
 
-    if not evt_header_obj:
-        evt_header_obj = eo_header_obj
-        logging.info("USING: for evt_header using eo_header")
-    if not ins_header_obj:
-        ins_header_obj = eo_header_obj
-        logging.info("USING: for ins_header using eo_header")
+        if not has_eo_header and not has_ir_header:
+            ir_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
+            eo_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
+            used_header = 'evt_header' if evt_header_obj else 'ins_header'
+            logging.error("ERROR: no ir_header or eo_header %s" % meta_file)
+            logging.info("USING: for ir_header and eo_header using %s" % used_header)
+        elif not has_eo_header:
+            eo_header_obj = ir_header_obj
+            logging.info("USING: for eo_header using ir_header")
+        elif not has_ir_header:
+            ir_header_obj = eo_header_obj
+            logging.info("USING: for ir_header using eo_header")
 
-    eo_im, ir_im = None, None
+        if not evt_header_obj:
+            evt_header_obj = eo_header_obj
+            logging.info("USING: for evt_header using eo_header")
+        if not ins_header_obj:
+            ins_header_obj = eo_header_obj
+            logging.info("USING: for ins_header using eo_header")
+
+        eo_im, ir_im,rgb_meta,ir_meta = None, None, None, None
+    rgb_meta = None
     if 'rgb' in meta:
         rgb_meta = meta['rgb']
-        eo_im, added = add_image(session, eo_path, ImageType.EO,
-                  w=safe_int_cast(rgb_meta.get("width")),
-                  h=safe_int_cast(rgb_meta.get("height")),
-                  step=safe_int_cast(rgb_meta.get("step")),
-                  encoding=rgb_meta["encoding"],
-                  is_bigendian=safe_int_cast(rgb_meta.get("is_bigendian")),
-                  meta_header=eo_header_obj)
-        if eo_im:
-            if added:
-                logging.info("ADDED: %s" % eo_path)
-            else:
-                logging.info("EXISTS: %s" % eo_path)
-        else:
-            logging.info("NO EO PATH")
+    else:
+        logging.info("NO EO PATH")
 
+    eo_im, added = add_image(session, eo_path, ImageType.EO,
+              w=safe_int_cast(rgb_meta.get("width")) if rgb_meta else None,
+              h=safe_int_cast(rgb_meta.get("height")) if rgb_meta else None,
+              step=safe_int_cast(rgb_meta.get("step")) if rgb_meta else None,
+              encoding=rgb_meta["encoding"] if rgb_meta else None,
+              is_bigendian=safe_int_cast(rgb_meta.get("is_bigendian")) if rgb_meta else None,
+              meta_header=eo_header_obj)
+    if eo_im:
+        if added:
+            logging.info("ADDED: %s" % eo_path)
+        else:
+            logging.info("EXISTS: %s" % eo_path)
+    ir_meta = None
     if 'ir' in meta:
         ir_meta = meta['ir']
-        ir_im, added = add_image(session, ir_path, ImageType.IR,
-                  w=safe_int_cast(ir_meta.get("width")),
-                  h=safe_int_cast(ir_meta.get("height")),
-                  step=safe_int_cast(ir_meta.get("step")),
-                  encoding=ir_meta["encoding"],
-                  is_bigendian=safe_int_cast(ir_meta.get("is_bigendian")),
-                  meta_header=ir_header_obj)
+    else:
+        logging.info("NO IR PATH")
 
-        if ir_im:
-            if added:
-                logging.info("ADDED: %s" % ir_path)
-            else:
-                logging.info("EXISTS: %s" % ir_path)
+    ir_im, added = add_image(session, ir_path, ImageType.IR,
+                             w=safe_int_cast(ir_meta.get("width")) if ir_meta else None,
+                             h=safe_int_cast(ir_meta.get("height")) if ir_meta else None,
+                             step=safe_int_cast(ir_meta.get("step")) if ir_meta else None,
+                             encoding=ir_meta["encoding"] if ir_meta else None,
+                             is_bigendian=safe_int_cast(ir_meta.get("is_bigendian")) if ir_meta else None,
+                             meta_header=ir_header_obj)
+    if ir_im:
+        if added:
+            logging.info("ADDED: %s" % ir_path)
         else:
-            logging.info("NO IR PATH")
+            logging.info("EXISTS: %s" % ir_path)
+
 
     if 'ins' in meta:
         ins_meta = meta['ins']

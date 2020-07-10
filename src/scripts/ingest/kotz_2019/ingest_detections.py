@@ -4,12 +4,15 @@ from datetime import datetime
 
 import h5py
 import pandas as pd
-from noaadb import Session
+from sqlalchemy import create_engine
+
+from noaadb import Session, DATABASE_URI
 from noaadb.schema.models import \
     Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
     LabelEntry, Homography
 from noaadb.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
+from noaadb.utils.schema_ops import drop_ml_schema, drop_label_schema, create_label_schema, create_ml_schema
 from scripts.ingest.kotz_2019 import JOB, SURVEY
 from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
 from scripts.ingest.kotz_2019.ingest_util import append_species, setup_logger, log_file_base
@@ -215,7 +218,7 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
         label_entry_eo, label_entry_ir = None, None
 
         if im_eo is None:
-            raise ("ERROR %s" % os.path.basename(row["image_eo"]))
+            raise Exception("ERROR %s" % os.path.basename(row["image_eo"]))
         else:
             label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species, 'eo')
 
@@ -265,20 +268,19 @@ def add_all():
         registered_pair.create_job(s)
         print("Correct labels (Verified)")
         registered_pair.process_correct(s)
-        print("Incorrect labels (FP)")
-        registered_pair.process_incorrect(s)
+        # print("Incorrect labels (FP)")
+        # registered_pair.process_incorrect(s)
         logging.info("=== COMPLETED %s %s ===" % fl_cam)
 
 
 
-# if False:
-#     engine = create_engine(DATABASE_URI)
-#     drop_ml_schema(engine)
-#     drop_label_schema(engine)
-#     create_label_schema(engine)
-#     create_ml_schema(engine)
-#     Homography.__table__.drop(bind=engine, checkfirst=True)
-#     Homography.__table__.create(bind=engine, checkfirst=True)
+# engine = create_engine(DATABASE_URI)
+# drop_ml_schema(engine)
+# drop_label_schema(engine)
+# create_label_schema(engine)
+# create_ml_schema(engine)
+# Homography.__table__.drop(bind=engine, checkfirst=True)
+# Homography.__table__.create(bind=engine, checkfirst=True)
 
 s = Session()
 
