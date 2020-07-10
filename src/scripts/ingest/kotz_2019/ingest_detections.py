@@ -8,8 +8,10 @@ from sqlalchemy import create_engine
 
 from noaadb import Session, DATABASE_URI
 from noaadb.schema.models import \
-    Sighting, IRLabelEntry, EOLabelEntry, LabelType, ImageType, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
+    Sighting, IRLabelEntry, EOLabelEntry, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
     LabelEntry, Homography
+from noaadb.schema.models.label_data import LabelType
+from noaadb.schema.models.survey_data import ImageType
 from noaadb.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
 from noaadb.utils.schema_ops import drop_ml_schema, drop_label_schema, create_label_schema, create_ml_schema
@@ -259,6 +261,7 @@ def add_all():
 
     for registered_pair in registered_list:
         registered_pair.delete(s)
+
     for registered_pair in registered_list:
         fl_cam=(registered_pair.dataset.id(), registered_pair.cam)
         lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)

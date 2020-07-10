@@ -2,8 +2,8 @@ import json
 import logging
 import os
 
-from noaadb.schema.models import Species, FlightMetaEvent, \
-    ImageType, HeaderMeta, InstrumentMeta, EOImage, IRImage, HeaderGroup
+from noaadb.schema.models import Species, EventMeta, HeaderMeta, InstrumentMeta, EOImage, IRImage, HeaderGroup
+from noaadb.schema.models.survey_data import ImageType
 from noaadb.utils.queries import get_species
 from scripts.get_image_size import get_image_size
 from scripts.util import parse_timestamp
@@ -230,9 +230,9 @@ def append_meta(session, meta_file,camera, eo_path, ir_path):
     evt_obj = None
     if 'evt' in meta:
         evt_meta = meta['evt']
-        evt_obj = session.query(FlightMetaEvent).filter_by(header_meta=evt_header_obj).first()
+        evt_obj = session.query(EventMeta).filter_by(header_meta=evt_header_obj).first()
         if not evt_obj:
-            evt_obj = FlightMetaEvent(
+            evt_obj = EventMeta(
                 event_port=safe_int_cast(evt_meta.get("event_port")),
                 event_num=safe_int_cast(evt_meta.get("event_num")),
                 time=safe_float_cast(evt_meta.get("time")),
