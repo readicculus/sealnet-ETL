@@ -4,9 +4,9 @@ from PIL import Image
 from build.lib.noaadb import Session
 from noaadb.utils.schema_ops import refresh_schema
 from noaadb.schema.models import NOAAImage, LabelType, ImageType
-from noaadb.utils.queries import *
+from noaadb.schema.utils.queries import *
 
-from scripts.util import *
+from import_project.utils.util import *
 refresh = False
 upload_s3 = False
 log_existing = True
@@ -299,7 +299,7 @@ for i, row in pb_df.iterrows():
             if log_existing: print("RGB Label exists id=%d" % label_entry_rgb_l.id)
 
     if not removed and not (label_entry_rgb is None and label_entry_ir is None):
-        l = Sighting(
+        l = EOIRLabelPair(
             # eo_label = None if not label_entry_rgb else label_entry_rgb,
             # ir_label = None if not label_entry_ir or is_new else label_entry_ir,
             ir_label_id = None if not label_entry_ir or is_new else label_entry_ir.id,

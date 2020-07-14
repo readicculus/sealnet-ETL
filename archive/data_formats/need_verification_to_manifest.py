@@ -4,7 +4,7 @@ import boto3
 from sqlalchemy import or_, and_, not_
 from sqlalchemy.orm import aliased
 
-from noaadb.schema.models import NOAAImage, TruePositiveLabels, Worker, Species, Sighting
+from noaadb.schema.models import NOAAImage, TruePositiveLabels, Worker, Species, EOIRLabelPair
 import os
 
 from noaadb.api import LabelDBApi
@@ -20,8 +20,8 @@ def get_all_hotspots(session):
     eo_worker = aliased(Worker)
     species = aliased(Species)
 
-    y = session.query(TruePositiveLabels, Sighting) \
-        .outerjoin(Sighting, Sighting.eo_label_id == TruePositiveLabels.id)\
+    y = session.query(TruePositiveLabels, EOIRLabelPair) \
+        .outerjoin(EOIRLabelPair, EOIRLabelPair.eo_label_id == TruePositiveLabels.id)\
         .join(species, TruePositiveLabels.species)\
         .join(eo_worker, TruePositiveLabels.worker)\
         .join(eo_image, TruePositiveLabels.image)\

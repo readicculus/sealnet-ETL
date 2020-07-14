@@ -3,19 +3,24 @@ import os
 from datetime import datetime
 
 import h5py
+import mlflow
 import pandas as pd
-from noaadb import Session
+
+from import_project import log_file_base
+from import_project.imports.import_images import SURVEY
+from noaadb import Session, DATABASE_URI
 from noaadb.schema.models import \
-    Sighting, IRLabelEntry, EOLabelEntry, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
+    EOIRLabelPair, IRLabelEntry, EOLabelEntry, IRImage, EOImage, Camera, Flight, Survey, HeaderMeta, \
     LabelEntry, Homography
 from noaadb.schema.models.label_data import LabelType
-from noaadb.schema.models.survey_data import ImageType
 from noaadb.schema.utils.queries import add_job_if_not_exists, add_worker_if_not_exists, get_existing_eo_label, \
     get_existing_ir_label
-from scripts.ingest.kotz_2019 import JOB, SURVEY
-from scripts.ingest.kotz_2019.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
-from scripts.ingest.kotz_2019.ingest_util import append_species, setup_logger, log_file_base
-from scripts.util import printProgressBar
+from noaadb.schema.utils.schema_ops import drop_ml_schema, drop_label_schema, create_label_schema, create_ml_schema
+from sqlalchemy import create_engine
+
+from import_project.imports.datasets import fl07_dataset, fl06_dataset, fl05_dataset, fl04_dataset, fl01_dataset
+from import_project.utils.ingest_util import append_species, setup_logger
+from import_project.utils.util import printProgressBar
 from sqlalchemy.exc import IntegrityError
 import numpy as np
 
@@ -52,18 +57,18 @@ class RegisteredDetections():
                 print("len(merged) - merged.image_ir.isnull().sum() - len(ir_df) = %d" % (
                             len(merged) - merged.image_ir.isnull().sum() - len(ir_df)))
             self.data = merged
-            self.data.loc[self.data['confidence_ir'] > 1, 'confidence_ir'] = 1
+            self.data.bucket_loc[self.data['confidence_ir'] > 1, 'confidence_ir'] = 1
             int_cols_ir = ['x1_ir', 'y1_ir', 'x2_ir', 'y2_ir']
             self.data[int_cols_ir] = self.data[int_cols_ir].round()
 
-        self.data.loc[self.data['confidence_eo'] > 1, 'confidence_eo'] = 1
+        self.data.bucket_loc[self.data['confidence_eo'] > 1, 'confidence_eo'] = 1
         int_cols_eo = ['x1_eo', 'y1_eo', 'x2_eo', 'y2_eo']
         self.data[int_cols_eo] = self.data[int_cols_eo].round()
 
         self.data.rename(columns={'species_eo': 'species', 'id_eo': 'id'}, inplace=True)
-        not_correct = self.data.loc[self.data['species'] == 'incorrect']
-        self.verified_incorrect = not_correct.loc[not_correct['confidence_eo'] >= .5]
-        self.verified_correct = self.data.loc[self.data['species'] != 'incorrect']
+        not_correct = self.data.bucket_loc[self.data['species'] == 'incorrect']
+        self.verified_incorrect = not_correct.bucket_loc[not_correct['confidence_eo'] >= .5]
+        self.verified_correct = self.data.bucket_loc[self.data['species'] != 'incorrect']
 
         self.job = None
         self.eo_worker = None
@@ -116,34 +121,37 @@ class RegisteredDetections():
                                    camera_id=cam.id)
                     s.add(H)
                     s.flush()
-
+                logging.info("Added homography for cam %d" % cam.id)
     def process_incorrect(self, s):
         process_labels(s, self.verified_incorrect, self.job, self.eo_worker, self.ir_worker, LabelType.FP)
 
     def process_correct(self, s):
         process_labels(s, self.verified_correct, self.job, self.eo_worker, self.ir_worker, LabelType.TP)
 
+JOB = 'kotz_review'
 
 fl07_L = RegisteredDetections(fl07_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 fl07_C = RegisteredDetections(fl07_dataset, 'Yolo/Gavin', JOB, 'CENT')
+fl07_dets = [fl07_C, fl07_L]
 
 fl06_L = RegisteredDetections(fl06_dataset, 'Yolo/Gavin', JOB, 'LEFT')
 fl06_C = RegisteredDetections(fl06_dataset, 'Yolo/Gavin', JOB, 'CENT')
+fl06_dets = [fl06_C, fl06_L]
 
 fl05_C = RegisteredDetections(fl05_dataset, 'Yolo/Gavin', JOB, 'CENT')
 fl05_L = RegisteredDetections(fl05_dataset, 'Yolo/Gavin', JOB, 'LEFT')
+fl05_dets = [fl05_C, fl05_L]
 
 fl04_C = RegisteredDetections(fl04_dataset, 'Yolo/Gavin', JOB, 'CENT')
 fl04_L = RegisteredDetections(fl04_dataset, 'Yolo/Gavin', JOB, 'LEFT')
-
+fl04_dets = [fl04_C, fl04_L]
 fl01_C = RegisteredDetections(fl01_dataset, 'Yolo/Gavin', JOB, 'CENT')
 
 registered_list = [fl07_L, fl07_C, fl06_L, fl06_C, fl05_C, fl05_L, fl04_C, fl04_L]#, fl01_C]
 
 
-def add_label(s, row, im, worker, job, species, type):
+def add_label(s, row, im, worker, job, species, age_class, type):
     iseo = (type == 'eo')
-    disc = ImageType.EO if iseo else ImageType.IR
     LabelClass = EOLabelEntry if iseo else IRLabelEntry
     label_entry = LabelClass(
         image_id=im.file_name,
@@ -152,9 +160,10 @@ def add_label(s, row, im, worker, job, species, type):
         y1=row['y1_eo'] if iseo else row['y1_ir'],
         y2=row['y2_eo'] if iseo else row['y2_ir'],
         species=species,
-        discriminator=disc
+        age_class=age_class
     )
     check = get_existing_eo_label(s, label_entry) if iseo else get_existing_ir_label(s, label_entry)
+    logging.info("Label exists im: %s %d %d %d %d" % (im.file_name, label_entry.x1, label_entry.y1, label_entry.x2, label_entry.y2))
     if check is not None:
         return check
     label_entry = LabelClass(
@@ -163,19 +172,23 @@ def add_label(s, row, im, worker, job, species, type):
         x2=row['x2_eo'] if iseo else row['x2_ir'],
         y1=row['y1_eo'] if iseo else row['y1_ir'],
         y2=row['y2_eo'] if iseo else row['y2_ir'],
-        confidence=row['confidence_eo'],
+        confidence=row['confidence_eo' if iseo else 'confidence_ir'],
         start_date=datetime.now(),
         end_date=None,
         is_shadow=None,
         worker=worker,
         job=job,
-        discriminator=disc,
-        species=species
+        species=species,
+        age_class=age_class
     )
     s.add(label_entry)
     try:
         s.flush()
+        logging.info("SUCCESS: added label entry im: %s %d %d %d %d" % (
+        im.file_name, label_entry.x1, label_entry.y1, label_entry.x2, label_entry.y2))
     except IntegrityError as e:
+        logging.error("ERROR: adding label entry im: %s %d %d %d %d" % (
+        im.file_name, label_entry.x1, label_entry.y1, label_entry.x2, label_entry.y2))
         print(e)
         s.rollback()
         return None
@@ -216,7 +229,7 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
         if im_eo is None:
             raise Exception("ERROR %s" % os.path.basename(row["image_eo"]))
         else:
-            label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species, 'eo')
+            label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species, age_class, 'eo')
 
         if ir_worker:
             if pd.isna(row["image_ir"]):  # no ir match for this image
@@ -226,18 +239,19 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
                 if im_ir is None:
                     print("ERROR %s" % os.path.basename(row["image_ir"]))
                 else:
-                    label_entry_ir = add_label(s, row, im_ir, ir_worker, job, species, 'ir')
+                    label_entry_ir = add_label(s, row, im_ir, ir_worker, job, species, age_class, 'ir')
 
-        sighting = Sighting(
-            age_class=age_class,
-            discriminator=disc,
+        sighting = EOIRLabelPair(
             eo_label=label_entry_eo,
             ir_label=label_entry_ir
         )
         s.add(sighting)
         try:
             s.flush()
+            logging.info("SUCCESS: added sighting eo:%s ir:%s" % (label_entry_eo is not None, label_entry_ir is not None))
         except IntegrityError as e:
+            logging.error("FAILED: added sighting eo:%s ir:%s" % (label_entry_eo is not None, label_entry_ir is not None))
+            logging.error(e)
             print(e)
             s.rollback()
 
@@ -249,35 +263,36 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
     s.flush()
     print("%d images have no IR/not aligned" % num_ir_missing)
 
+def add(cam_regsistered_pair):
+    fl_cam = (cam_regsistered_pair.dataset.id(), cam_regsistered_pair.cam)
+    lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
+    setup_logger(lf)
+    logging.info("=== Processing %s %s ===" % fl_cam)
+    cam_regsistered_pair.print_info()
+    cam_regsistered_pair.create_job(s)
+    print("Correct labels (Verified)")
+    cam_regsistered_pair.process_correct(s)
+    # print("Incorrect labels (FP)")
+    # registered_pair.process_incorrect(s)
+    logging.info("=== COMPLETED %s %s ===" % fl_cam)
 
 def add_all():
-    # n=0
-
-    for registered_pair in registered_list:
-        registered_pair.delete(s)
-
-    for registered_pair in registered_list:
-        fl_cam=(registered_pair.dataset.id(), registered_pair.cam)
-        lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
-        setup_logger(lf)
-        logging.info("=== Processing %s %s ===" % fl_cam)
-        registered_pair.print_info()
-        registered_pair.create_job(s)
-        print("Correct labels (Verified)")
-        registered_pair.process_correct(s)
-        # print("Incorrect labels (FP)")
-        # registered_pair.process_incorrect(s)
-        logging.info("=== COMPLETED %s %s ===" % fl_cam)
+    with mlflow.start_run(run_name='import_labels') as mlrun:
+        for dets in fl05_dets:
+            add(dets)
 
 
-
-# engine = create_engine(DATABASE_URI)
-# drop_ml_schema(engine)
-# drop_label_schema(engine)
-# create_label_schema(engine)
-# create_ml_schema(engine)
-# Homography.__table__.drop(bind=engine, checkfirst=True)
-# Homography.__table__.create(bind=engine, checkfirst=True)
+def drop_create_label_schemas():
+    engine = create_engine(DATABASE_URI)
+    with mlflow.start_run(run_name='reset_label_schema'):
+        with mlflow.start_run(run_name='drop_label_schema', nested=True):
+            drop_ml_schema(engine)
+            drop_label_schema(engine)
+            Homography.__table__.drop(bind=engine, checkfirst=True)
+        with mlflow.start_run(run_name='create_label_schema', nested=True):
+            create_label_schema(engine)
+            create_ml_schema(engine)
+            Homography.__table__.create(bind=engine, checkfirst=True)
 
 s = Session()
 

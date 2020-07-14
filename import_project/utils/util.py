@@ -7,17 +7,7 @@ from botocore.exceptions import ClientError
 from dateutil import parser
 from datetime import datetime
 
-def key_exists(s3_client, bucket, key):
-    try:
-        s3_client.head_object(Bucket=bucket, Key=key)
-    except ClientError:
-        return False
-    return True
 
-def upoload_s3(s3, s3_client, s3_bucket, src, dst):
-    if not key_exists(s3_client, s3_bucket, dst):
-        print("Uploading %s -> %s" % (src, dst))
-        s3.meta.client.upload_file(src, 'noaa-data', dst)
 
 def is_removed(status): return "removed" in status
 def is_new_label(status): return "new" in status

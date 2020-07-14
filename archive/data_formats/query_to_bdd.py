@@ -118,6 +118,6 @@ for im in images:
     # }
 
 s.close()
-with open("out.json" , "w") as f:
+with open("out.json", "w") as f:
     json.dump(lines, f, indent=4, sort_keys=True)
     f.write("\r\n")

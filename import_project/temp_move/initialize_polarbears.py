@@ -2,14 +2,14 @@ import boto3
 from PIL import Image
 
 from build.lib.noaadb import Session
-from noaadb.schema.models import NOAAImage, Species, Sighting, IRLabelEntry, EOLabelEntry, ImageType, \
+from noaadb.schema.models import NOAAImage, Species, EOIRLabelPair, IRLabelEntry, EOLabelEntry, ImageType, \
     LabelType
-from noaadb.utils.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
+from noaadb.schema.utils.queries import species_exists, get_image, get_species, add_job_if_not_exists, \
     add_worker_if_not_exists, image_exists
-from scripts.util import *
+from import_project.utils.util import *
 from dateutil import parser
 
-from scripts.util import file_exists, parse_chess_filename
+from import_project.utils.util import file_exists, parse_chess_filename
 
 NOAA_WORKER = "noaa"
 NOAA_JOB = "noaa_original_labels"
@@ -219,7 +219,7 @@ for i, row in pb_df.iterrows():
     )
     to_add.append(label_entry_rgb)
 
-    l = Sighting(
+    l = EOIRLabelPair(
         hotspot_id=pb_id if pb_id else hotspot_id,
         age_class=age_class,
         species=sp,

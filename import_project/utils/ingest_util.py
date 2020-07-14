@@ -5,10 +5,9 @@ import os
 from noaadb.schema.models import Species, EventMeta, HeaderMeta, InstrumentMeta, EOImage, IRImage, HeaderGroup
 from noaadb.schema.models.survey_data import ImageType
 from noaadb.schema.utils.queries import get_species
-from scripts.get_image_size import get_image_size
-from scripts.util import parse_timestamp
+from import_project.utils.get_image_size import get_image_size
+from import_project.utils.util import parse_timestamp
 
-log_file_base = '/home/yuval/Documents/XNOR/sealnet-ETL/src/scripts/ingest/logs/'
 
 
 def image_fn_parser(im):
@@ -85,7 +84,7 @@ def add_image(s, path, im_type, w=None, h=None,
         type=im_type,
         width=w,
         height=h,
-        depth=3,
+        depth=3 if im_type == ImageType.EO else 1,
         timestamp=timestamp,
         is_bigendian=is_bigendian,
         step=step,
@@ -95,86 +94,82 @@ def add_image(s, path, im_type, w=None, h=None,
     s.add(im)
     return im, True
 
-def append_meta(session, meta_file,camera, eo_path, ir_path):
-    meta_exists = meta_file is not None
-    meta = {}
+def append_meta(session, meta_file,camera, eo_path, ir_path, missing_header):
     try:
         with open(os.path.join(meta_file), 'r') as f:
             meta = f.read()
             meta = json.loads(meta)
     except:
         logging.info("Could not find metafile %s" %meta_file)
-        meta_exists = False
-        meta = {}
+        meta = missing_header
 
     eo_header_obj = None
     ir_header_obj = None
     evt_header_obj = None
     ins_header_obj = None
-    if meta_exists:
-        if 'rgb' in meta and 'header' in meta['rgb']:
-            eo_header_obj = append_header(session, meta['rgb']['header'], camera)
-        if 'ir' in meta and 'header' in meta['ir']:
-            ir_header_obj = append_header(session, meta['ir']['header'], camera)
-        if 'evt' in meta and 'header' in meta['evt']:
-            evt_header_obj = append_header(session, meta['evt']['header'], camera)
-        if 'ins' in meta and 'header' in meta['ins']:
-            ins_header_obj = append_header(session, meta['ins']['header'], camera)
-        if eo_header_obj is None:
-            logging.error("eo_header_obj is None : %s\n" % meta_file)
+    if 'rgb' in meta and 'header' in meta['rgb']:
+        eo_header_obj = append_header(session, meta['rgb']['header'], camera)
+    if 'ir' in meta and 'header' in meta['ir']:
+        ir_header_obj = append_header(session, meta['ir']['header'], camera)
+    if 'evt' in meta and 'header' in meta['evt']:
+        evt_header_obj = append_header(session, meta['evt']['header'], camera)
+    if 'ins' in meta and 'header' in meta['ins']:
+        ins_header_obj = append_header(session, meta['ins']['header'], camera)
+    if eo_header_obj is None:
+        logging.error("eo_header_obj is None : %s\n" % meta_file)
 
-        # eo header and ir header should be same I think
-        # evt header should also be the same because it uses time of event sent not time of image received
-        # instrument header is a bit different because i guess it measures and uses the time of measurment as the header
-        if ir_header_obj is not None and ir_header_obj.stamp != 0:
-            logging.error("ir_header_obj.stamp != 0 : %s\n" % meta_file)
+    # eo header and ir header should be same I think
+    # evt header should also be the same because it uses time of event sent not time of image received
+    # instrument header is a bit different because i guess it measures and uses the time of measurment as the header
+    if ir_header_obj is not None and ir_header_obj.stamp != 0:
+        logging.error("ir_header_obj.stamp != 0 : %s\n" % meta_file)
 
-        has_ir_header = ir_header_obj is not None and ir_header_obj.stamp != 0
-        has_eo_header = eo_header_obj is not None
-        has_evt_header = evt_header_obj is not None
-        has_ins_header = ins_header_obj is not None
-        logging.info("has_ir_header: %s - "
-                     "has_eo_header: %s - "
-                     "has_evt_header: %s - "
-                     "has_ins_header: %s" %  (has_ir_header, has_eo_header, has_evt_header, has_ins_header))
+    has_ir_header = ir_header_obj is not None and ir_header_obj.stamp != 0
+    has_eo_header = eo_header_obj is not None
+    has_evt_header = evt_header_obj is not None
+    has_ins_header = ins_header_obj is not None
+    logging.info("has_ir_header: %s - "
+                 "has_eo_header: %s - "
+                 "has_evt_header: %s - "
+                 "has_ins_header: %s" %  (has_ir_header, has_eo_header, has_evt_header, has_ins_header))
 
 
-        if not has_eo_header and not has_ir_header:
-            ir_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
-            eo_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
-            used_header = 'evt_header' if evt_header_obj else 'ins_header'
-            logging.error("ERROR: no ir_header or eo_header %s" % meta_file)
-            logging.info("USING: for ir_header and eo_header using %s" % used_header)
-        elif not has_eo_header:
-            eo_header_obj = ir_header_obj
-            logging.info("USING: for eo_header using ir_header")
-        elif not has_ir_header:
-            ir_header_obj = eo_header_obj
-            logging.info("USING: for ir_header using eo_header")
+    if not has_eo_header and not has_ir_header:
+        ir_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
+        eo_header_obj = evt_header_obj if evt_header_obj else ins_header_obj
+        used_header = 'evt_header' if evt_header_obj else 'ins_header'
+        logging.error("ERROR: no ir_header or eo_header %s" % meta_file)
+        logging.info("USING: for ir_header and eo_header using %s" % used_header)
+    elif not has_eo_header:
+        eo_header_obj = ir_header_obj
+        logging.info("USING: for eo_header using ir_header")
+    elif not has_ir_header:
+        ir_header_obj = eo_header_obj
+        logging.info("USING: for ir_header using eo_header")
 
-        if not evt_header_obj:
-            evt_header_obj = eo_header_obj
-            logging.info("USING: for evt_header using eo_header")
-        if not ins_header_obj:
-            ins_header_obj = eo_header_obj
-            logging.info("USING: for ins_header using eo_header")
+    if not evt_header_obj:
+        evt_header_obj = eo_header_obj
+        logging.info("USING: for evt_header using eo_header")
+    if not ins_header_obj:
+        ins_header_obj = eo_header_obj
+        logging.info("USING: for ins_header using eo_header")
 
-        eo_im, ir_im,rgb_meta,ir_meta = None, None, None, None
+    eo_im, ir_im,rgb_meta,ir_meta = None, None, None, None
     rgb_meta = None
     if 'rgb' in meta:
         rgb_meta = meta['rgb']
     else:
         logging.info("NO EO PATH")
 
-    eo_im, added = add_image(session, eo_path, ImageType.EO,
+    eo_im, eo_added = add_image(session, eo_path, ImageType.EO,
               w=safe_int_cast(rgb_meta.get("width")) if rgb_meta else None,
               h=safe_int_cast(rgb_meta.get("height")) if rgb_meta else None,
               step=safe_int_cast(rgb_meta.get("step")) if rgb_meta else None,
-              encoding=rgb_meta["encoding"] if rgb_meta else None,
+              encoding=rgb_meta["encoding"] if rgb_meta and "encoding" in rgb_meta else 'bayer_grbg8',
               is_bigendian=safe_int_cast(rgb_meta.get("is_bigendian")) if rgb_meta else None,
               meta_header=eo_header_obj)
     if eo_im:
-        if added:
+        if eo_added:
             logging.info("ADDED: %s" % eo_path)
         else:
             logging.info("EXISTS: %s" % eo_path)
@@ -184,15 +179,15 @@ def append_meta(session, meta_file,camera, eo_path, ir_path):
     else:
         logging.info("NO IR PATH")
 
-    ir_im, added = add_image(session, ir_path, ImageType.IR,
+    ir_im, ir_added = add_image(session, ir_path, ImageType.IR,
                              w=safe_int_cast(ir_meta.get("width")) if ir_meta else None,
                              h=safe_int_cast(ir_meta.get("height")) if ir_meta else None,
                              step=safe_int_cast(ir_meta.get("step")) if ir_meta else None,
-                             encoding=ir_meta["encoding"] if ir_meta else None,
+                             encoding=ir_meta["encoding"] if ir_meta and "encoding" in ir_meta else 'mono16',
                              is_bigendian=safe_int_cast(ir_meta.get("is_bigendian")) if ir_meta else None,
                              meta_header=ir_header_obj)
     if ir_im:
-        if added:
+        if ir_added:
             logging.info("ADDED: %s" % ir_path)
         else:
             logging.info("EXISTS: %s" % ir_path)
@@ -242,6 +237,7 @@ def append_meta(session, meta_file,camera, eo_path, ir_path):
 
     hg = HeaderGroup(eo_image = eo_im, ir_image = ir_im, evt_header_meta = evt_obj)
     session.add(hg)
+    return eo_added, ir_added
 
 def setup_logger(log_file):
     for handler in logging.root.handlers[:]:
