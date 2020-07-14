@@ -5,7 +5,7 @@ import mlflow
 
 from import_project import log_file_base
 from import_project.imports.datasets import fl04_dataset, fl06_dataset, fl07_dataset, fl05_dataset
-from import_project.imports.delete_images import delete_cam_images
+from import_project.imports.deletions import delete_cam_images
 from import_project.utils.util import printProgressBar
 from import_project.utils.ingest_util import setup_logger, append_meta
 from noaadb import Session
@@ -81,8 +81,8 @@ def import_images(dataset):
             if os.path.exists(lf):
                 os.remove(lf)
         print()
-    if os.path.exists(log_file_base):
-        os.rmdir(log_file_base)
+    if not os.path.exists(log_file_base):
+        os.makedirs(log_file_base)
     s.close()
 
 if __name__ == '__main__':

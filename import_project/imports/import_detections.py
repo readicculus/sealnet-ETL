@@ -7,6 +7,7 @@ import mlflow
 import pandas as pd
 
 from import_project import log_file_base
+from import_project.imports.deletions import delete_cam_labels
 from import_project.imports.import_images import SURVEY
 from noaadb import Session, DATABASE_URI
 from noaadb.schema.models import \
@@ -57,18 +58,18 @@ class RegisteredDetections():
                 print("len(merged) - merged.image_ir.isnull().sum() - len(ir_df) = %d" % (
                             len(merged) - merged.image_ir.isnull().sum() - len(ir_df)))
             self.data = merged
-            self.data.bucket_loc[self.data['confidence_ir'] > 1, 'confidence_ir'] = 1
+            self.data.loc[self.data['confidence_ir'] > 1, 'confidence_ir'] = 1
             int_cols_ir = ['x1_ir', 'y1_ir', 'x2_ir', 'y2_ir']
             self.data[int_cols_ir] = self.data[int_cols_ir].round()
 
-        self.data.bucket_loc[self.data['confidence_eo'] > 1, 'confidence_eo'] = 1
+        self.data.loc[self.data['confidence_eo'] > 1, 'confidence_eo'] = 1
         int_cols_eo = ['x1_eo', 'y1_eo', 'x2_eo', 'y2_eo']
         self.data[int_cols_eo] = self.data[int_cols_eo].round()
 
         self.data.rename(columns={'species_eo': 'species', 'id_eo': 'id'}, inplace=True)
-        not_correct = self.data.bucket_loc[self.data['species'] == 'incorrect']
-        self.verified_incorrect = not_correct.bucket_loc[not_correct['confidence_eo'] >= .5]
-        self.verified_correct = self.data.bucket_loc[self.data['species'] != 'incorrect']
+        not_correct = self.data.loc[self.data['species'] == 'incorrect']
+        self.verified_incorrect = not_correct.loc[not_correct['confidence_eo'] >= .5]
+        self.verified_correct = self.data.loc[self.data['species'] != 'incorrect']
 
         self.job = None
         self.eo_worker = None
@@ -82,9 +83,12 @@ class RegisteredDetections():
         print("Has IR:  " + str(self.has_ir))
         print()
 
+    def cam_id(self):
+        return self.dataset.get_cam_id(self.cam)
+
     def delete(self, s):
         eo_labels = s.query(LabelEntry).join(EOImage).join(HeaderMeta).join(Camera).filter_by(
-            cam_name=self.dataset.get_cam_id(self.cam)) \
+            cam_name=self.cam_id()) \
             .join(Flight).filter_by(flight_name=self.dataset.id()) \
             .join(Survey).filter_by(name=SURVEY).all()
         ir_labels = s.query(LabelEntry).join(IRImage).join(HeaderMeta).join(Camera).filter_by(
@@ -165,7 +169,7 @@ def add_label(s, row, im, worker, job, species, age_class, type):
     check = get_existing_eo_label(s, label_entry) if iseo else get_existing_ir_label(s, label_entry)
     logging.info("Label exists im: %s %d %d %d %d" % (im.file_name, label_entry.x1, label_entry.y1, label_entry.x2, label_entry.y2))
     if check is not None:
-        return check
+        return check, False
     label_entry = LabelClass(
         image_id=im.file_name,
         x1=row['x1_eo'] if iseo else row['x1_ir'],  # TODO set earlier
@@ -191,9 +195,9 @@ def add_label(s, row, im, worker, job, species, age_class, type):
         im.file_name, label_entry.x1, label_entry.y1, label_entry.x2, label_entry.y2))
         print(e)
         s.rollback()
-        return None
+        return None, False
 
-    return label_entry
+    return label_entry, True
 
 
 def process_labels(s, rows, job, eo_worker, ir_worker, disc):
@@ -212,6 +216,8 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
     total = len(rows)
     num_ir_missing = 0
     j = 0
+    eo_added_ct = 0
+    ir_added_ct = 0
     for i, row in rows.iterrows():
         if j % 10 == 0:
             printProgressBar(j, total, prefix='Progress:', suffix='Complete', length=50)
@@ -229,8 +235,9 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
         if im_eo is None:
             raise Exception("ERROR %s" % os.path.basename(row["image_eo"]))
         else:
-            label_entry_eo = add_label(s, row, im_eo, eo_worker, job, species, age_class, 'eo')
-
+            label_entry_eo, eo_added = add_label(s, row, im_eo, eo_worker, job, species, age_class, 'eo')
+            if eo_added:
+                eo_added_ct += 1
         if ir_worker:
             if pd.isna(row["image_ir"]):  # no ir match for this image
                 num_ir_missing += 1
@@ -239,12 +246,16 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
                 if im_ir is None:
                     print("ERROR %s" % os.path.basename(row["image_ir"]))
                 else:
-                    label_entry_ir = add_label(s, row, im_ir, ir_worker, job, species, age_class, 'ir')
+                    label_entry_ir, added = add_label(s, row, im_ir, ir_worker, job, species, age_class, 'ir')
+                    if added:
+                        ir_added_ct +=1
 
         sighting = EOIRLabelPair(
             eo_label=label_entry_eo,
             ir_label=label_entry_ir
         )
+        mlflow.log_metric('eo_labels', eo_added_ct)
+        mlflow.log_metric('ir_labels', ir_added_ct)
         s.add(sighting)
         try:
             s.flush()
@@ -263,10 +274,12 @@ def process_labels(s, rows, job, eo_worker, ir_worker, disc):
     s.flush()
     print("%d images have no IR/not aligned" % num_ir_missing)
 
-def add(cam_regsistered_pair):
+def import_cam_labels(s, cam_regsistered_pair):
+
     fl_cam = (cam_regsistered_pair.dataset.id(), cam_regsistered_pair.cam)
-    lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
-    setup_logger(lf)
+    mlflow.log_param('cam', cam_regsistered_pair.dataset.get_cam_id(cam_regsistered_pair.cam))
+    mlflow.log_param('flight', cam_regsistered_pair.dataset.id())
+    mlflow.log_param('survey', SURVEY)
     logging.info("=== Processing %s %s ===" % fl_cam)
     cam_regsistered_pair.print_info()
     cam_regsistered_pair.create_job(s)
@@ -277,24 +290,47 @@ def add(cam_regsistered_pair):
     logging.info("=== COMPLETED %s %s ===" % fl_cam)
 
 def add_all():
-    with mlflow.start_run(run_name='import_labels') as mlrun:
-        for dets in fl05_dets:
-            add(dets)
+    s = Session()
+    if not os.path.exists(log_file_base):
+        os.makedirs(log_file_base)
+    flight_datasets = [fl07_dets, fl06_dets, fl05_dets, fl04_dets]
+    for cam_data in flight_datasets:
+        with mlflow.start_run(run_name='import_labels') as mlrun:
+            # set flight params
+            temp = cam_data[0]
+            mlflow.log_param('flight', temp.dataset.flight)
+            for dets in cam_data:
+                # setup logger
+                fl_cam = (dets.dataset.id(), dets.cam)
+                lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
+                setup_logger(lf)
 
+                # delete labels run
+                with mlflow.start_run(run_name='delete_labels', nested=True):
+                    delete_cam_labels(s, dets.dataset, dets.cam, SURVEY)
+
+                # import labels run
+                with mlflow.start_run(run_name='import_labels', nested=True):
+                    import_cam_labels(s, dets)
+                    mlflow.log_artifact(lf)
+
+                # delete log file
+                if os.path.exists(lf):
+                    os.remove(lf)
+    if not os.path.exists(log_file_base):
+        os.makedirs(log_file_base)
+    s.close()
 
 def drop_create_label_schemas():
     engine = create_engine(DATABASE_URI)
     with mlflow.start_run(run_name='reset_label_schema'):
         with mlflow.start_run(run_name='drop_label_schema', nested=True):
-            drop_ml_schema(engine)
-            drop_label_schema(engine)
-            Homography.__table__.drop(bind=engine, checkfirst=True)
+            # drop_ml_schema(engine)
+            drop_label_schema(engine, tables_only=False)
         with mlflow.start_run(run_name='create_label_schema', nested=True):
-            create_label_schema(engine)
-            create_ml_schema(engine)
-            Homography.__table__.create(bind=engine, checkfirst=True)
+            create_label_schema(engine, tables_only=False)
+            # create_ml_schema(engine)
 
-s = Session()
 
+# drop_create_label_schemas()
 add_all()
-s.close()
