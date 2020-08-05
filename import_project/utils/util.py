@@ -1,6 +1,7 @@
 
 import os
 
+import mlflow
 import pandas as pd
 
 from botocore.exceptions import ClientError
@@ -15,15 +16,33 @@ def is_bad_res(status): return "bad_res" in status
 def is_maybe_seal(status): return "maybe_seal" in status
 def is_off_edge(status): return "off_edge" in status
 
+def save_list_artifact(list, artifact_name, artifact_path):
+    filename = '/tmp/%s' % artifact_name
+    try:
+        with open(filename, 'w') as f:
+            for item in list:
+                f.write("%s\n" % item)
+        mlflow.log_artifact(filename, artifact_path)
+    finally:
+        os.remove(filename)
+
 def parse_chess_filename (f):
+    ct = len(os.path.basename(f).split('_'))
     info = {}
     e = f.split('_')
     e = [a for a in e if a != ""]
-    info['survey'] = e[0]
-    info['flight'] = e[1]+"_"+e[2]
-    info['camPos'] = e[3]
-    info['timestamp'] = e[4]
-    info['camtype'] = e[5].split('-')[0]
+    if ct == 7:
+        info['survey'] = e[0]
+        info['flight'] = e[2]
+        info['camPos'] = e[3]
+        info['timestamp'] = e[4]
+        info['camtype'] = e[5].split('-')[0]
+    else:
+        info['survey'] = e[0]
+        info['flight'] = e[1]
+        info['camPos'] = e[2]
+        info['timestamp'] = e[3]
+        info['camtype'] = e[4].split('-')[0]
     return info
 
 def file_exists(path):

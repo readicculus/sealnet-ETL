@@ -13,10 +13,8 @@ from noaadb import Session, DATABASE_URI
 from noaadb.schema.models import EOIRLabelPair, EOImage, EOLabelEntry, IRLabelEntry, IRImage, \
     Homography
 from noaadb.schema.models.survey_data import FusedImage
-from import_project.imports.ModailtyTransform import ModalityTransform, TransformMode
+from import_project.utils.ModailtyTransform import ModalityTransform, TransformMode
 from import_project.utils.s3_util import check
-
-# ''' set up tracking uri '''
 
 
 noaa_sess = boto3.session.Session(profile_name='default')
@@ -142,5 +140,9 @@ with mlflow.start_run(run_name='fuse_images', experiment_id=experiment.experimen
         mlflow.log_metric('size_on_disk_Mb', int(saved_file_size/1000000))
         print('Added %s %s' % (local_path, s3_object_url))
         x=1
+    mlflow.log_metric('fused_image_exists', existing_images)
+    mlflow.log_metric('fused_image_added', new_images)
+    mlflow.log_metric('fused_dbentry_added', num_added_to_db)
+    mlflow.log_metric('size_on_disk_Mb', int(saved_file_size / 1000000))
 s.close()
 x=1

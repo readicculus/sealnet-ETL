@@ -205,3 +205,13 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+.env
+.idea/
+archive/data_formats/noaa_attributes.yml
+archive/data_formats/noaa_categories.yml
+archive/data_formats/out.json
+archive/test.py
+import_project/imports/CHESS/mlruns/
+import_project/logs/
+src/

@@ -31,10 +31,10 @@ class ModalityTransform():
         # missing_mask = np.zeros(a_channel.shape)
         # missing_mask[a_channel == 0] = 1
 
-        r_channel[a_channel == 0.] = 255.
+        r_channel[a_channel == 0.] = 0.
         b_channel[a_channel == 0.] = 0.
         g_channel[a_channel == 0.] = 0.
-        a_channel[a_channel == 0.] = 255.
+        a_channel[a_channel == 0.] = 0.
 
         # r_channel[missing_mask_1c[:,1], missing_mask_1c[:,0]] = 255
 

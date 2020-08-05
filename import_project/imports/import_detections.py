@@ -7,6 +7,7 @@ import mlflow
 import pandas as pd
 
 from import_project import log_file_base
+from import_project.imports import experiment
 from import_project.imports.deletions import delete_cam_labels
 from import_project.imports.import_images import SURVEY
 from noaadb import Session, DATABASE_URI
@@ -323,7 +324,7 @@ def add_all():
 
 def drop_create_label_schemas():
     engine = create_engine(DATABASE_URI)
-    with mlflow.start_run(run_name='reset_label_schema'):
+    with mlflow.start_run(run_name='reset_label_schema', experiment_id=experiment.experiment_id):
         with mlflow.start_run(run_name='drop_label_schema', nested=True):
             # drop_ml_schema(engine)
             drop_label_schema(engine, tables_only=False)
