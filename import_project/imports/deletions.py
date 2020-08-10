@@ -33,8 +33,8 @@ def delete_cam_labels(s, dataset, cam, SURVEY):
 
     s.flush()
     s.commit()
-    mlflow.log_metric('eo_labels', num_ir_labels_pre - num_ir_labels_post)
-    mlflow.log_metric('ir_labels', num_eo_labels_pre - num_eo_labels_post)
+    mlflow.log_metric('ir_labels', num_ir_labels_pre - num_ir_labels_post)
+    mlflow.log_metric('eo_labels', num_eo_labels_pre - num_eo_labels_post)
 
 
 def delete_cam_images(dataset, cam, SURVEY):
@@ -89,3 +89,4 @@ def delete_cam_images(dataset, cam, SURVEY):
             print("rolling back")
 
     return False
+

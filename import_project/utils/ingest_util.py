@@ -245,4 +245,4 @@ def setup_logger(log_file):
     logging.basicConfig(filename=log_file, filemode='w',
                         format='%(asctime)s %(message)s',
                         datefmt='%m/%d/%Y %I:%M:%S %p',
-                        level=logging.DEBUG)
+                        level=logging.INFO)

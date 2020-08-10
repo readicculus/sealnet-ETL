@@ -5,19 +5,18 @@ import mlflow
 
 from import_project import log_file_base
 from import_project.imports import experiment
-from import_project.imports.CHESS.dataset import CHESS_datasets
-from import_project.imports.datasets import fl04_dataset, fl06_dataset, fl07_dataset, fl05_dataset
+from import_project.imports.CHESS import SURVEY
+from import_project.imports.CHESS.CHESSDataset import chess_datasets
 from import_project.imports.deletions import delete_cam_images
 from import_project.utils.util import printProgressBar
 from import_project.utils.ingest_util import setup_logger, append_meta
 from noaadb import Session
 from noaadb.schema.utils.queries import add_or_get_cam_flight_survey
 
-SURVEY = 'CHESS_2016'
-
+# TODO currently only works for EO
 def process_cam(s, dataset, cam):
     logging.info("=== Processing %s %s ===" % (dataset.id(), cam))
-    matches = dataset.get_cam_eo_ir_meta_matches()
+    matches = dataset.get_cam_eo_ir_meta_matches(cam)
 
     total = len(matches)
     logging.info("%d matches" % (total))
@@ -57,7 +56,7 @@ def process_cam(s, dataset, cam):
     s.commit()
     s.expunge_all()
     logging.info("=== COMPLETED %s %s ===" % (dataset.id(), cam))
-
+    return eo_ct, ir_ct
 
 
 
@@ -67,28 +66,38 @@ def import_images(dataset):
         os.makedirs(log_file_base)
     s = Session()
     with mlflow.start_run(run_name='import_flight', experiment_id=experiment.experiment_id) as mlrun:
+        # print('runId %s' % mlrun.info.run_id)
+        # print('parent %s' % mlflow.get_run(mlrun.info.run_id).data.tags['mlflow.parentRunId'])
         mlflow.log_param('flight', dataset.flight)
         mlflow.log_param('survey', SURVEY)
         print("Processing %s" % dataset.flight)
         cams = dataset.get_cam_names()
+        eo_total = 0
+        ir_total = 0
         for cam in cams:
             lf = os.path.join(log_file_base, 'ingest_imagery_%s%s.log' % (dataset.id(), cam))
             setup_logger(lf)
             if delete_first:
-                with mlflow.start_run(run_name='delete_cam', nested=True):
+                with mlflow.start_run(run_name='delete_cam', nested=True) as del_run:
+                    # print('runId %s' % del_run.info.run_id)
+                    # print('parent %s' % mlflow.get_run(del_run.info.run_id).data.tags['mlflow.parentRunId'])
                     delete_cam_images(dataset, cam, SURVEY)
-            with mlflow.start_run(run_name='import_cam', nested=True):
+            with mlflow.start_run(run_name='import_cam', nested=True) as import_run:
                 print("Cam %s" % cam)
-                process_cam(s, dataset, cam)
-                mlflow.log_artifact(lf)
+                eo_ct, ir_ct = process_cam(s, dataset, cam)
+                eo_total += eo_ct
+                ir_total += ir_ct
             if os.path.exists(lf):
                 os.remove(lf)
+        mlflow.log_metric('eo_images', eo_total)
+        mlflow.log_metric('ir_images', ir_total)
         print()
+
     if not os.path.exists(log_file_base):
         os.makedirs(log_file_base)
     s.close()
 
 if __name__ == '__main__':
-    datasets = [fl05_dataset, fl04_dataset, fl07_dataset, fl06_dataset]  # , fl01_dataset]
-    for dataset in CHESS_datasets:
+    # with mlflow.start_run(run_name='import_kotz', experiment_id=experiment.experiment_id) as mlrun_parent:
+    for dataset in chess_datasets:
         import_images(dataset)
