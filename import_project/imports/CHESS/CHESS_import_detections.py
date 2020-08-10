@@ -71,6 +71,8 @@ def add_all():
                     flight_ir_added_count += ir_added
                     mlflow.log_artifact(lf) # log the log file to the run
 
+                mlflow.log_metric('eo_labels', flight_eo_added_count)
+                mlflow.log_metric('ir_labels', flight_ir_added_count)
                 # delete log file
                 if os.path.exists(lf):
                     os.remove(lf)
