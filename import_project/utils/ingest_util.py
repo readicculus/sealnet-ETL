@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 
 from noaadb.schema.models import Species, EventMeta, HeaderMeta, InstrumentMeta, EOImage, IRImage, HeaderGroup
 from noaadb.schema.models.survey_data import ImageType
@@ -21,7 +22,9 @@ def image_fn_parser(im):
     cam = name_parts[start_idx + 1]
     day = name_parts[start_idx + 2]
     time = name_parts[start_idx + 3]
-    timestamp = parse_timestamp(day + time + "GMT")
+    ts = datetime.strptime(day, "%Y%m%d").timestamp() + float(time)
+    timestamp = datetime.fromtimestamp(ts)
+    # timestamp = parse_timestamp(day + time + "GMT")
     return flight, cam, timestamp
 
 def safe_float_cast(s):

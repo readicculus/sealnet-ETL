@@ -8,11 +8,10 @@ from import_project.imports import experiment
 from import_project.imports.CHESS import SURVEY
 from import_project.imports.CHESS.CHESSDataset import chess_datasets
 from import_project.imports.deletions import delete_cam_images
-from import_project.utils.util import printProgressBar
 from import_project.utils.ingest_util import setup_logger, append_meta
 from noaadb import Session
 from noaadb.schema.utils.queries import add_or_get_cam_flight_survey
-
+from thebook.print.func import printProgressBar
 # TODO currently only works for EO
 def process_cam(s, dataset, cam):
     logging.info("=== Processing %s %s ===" % (dataset.id(), cam))

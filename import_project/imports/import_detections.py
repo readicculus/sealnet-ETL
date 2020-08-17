@@ -11,7 +11,6 @@ def process_labels(s, labels, job, eo_worker, ir_worker):
     for i, label in enumerate(labels):
         if j % 10 == 0:
             printProgressBar(j+1, total, prefix='Progress:', suffix='Complete', length=50)
-        j += 1
 
         eo_added, ir_added = label.record(s, eo_worker, ir_worker, job)
         eo_added_ct += eo_added
@@ -23,6 +22,10 @@ def process_labels(s, labels, job, eo_worker, ir_worker):
             printProgressBar(j+1, total, prefix='Progress:', suffix='Committing', length=50)
             s.commit()
             s.flush()
+        j += 1
+    if total>0:
+        printProgressBar(j + 1, total, prefix='Progress:', suffix='Complete', length=50)
+
     s.commit()
     s.flush()
     mlflow.log_metric('eo_labels', eo_added_ct)

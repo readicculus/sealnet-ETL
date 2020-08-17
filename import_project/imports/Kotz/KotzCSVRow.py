@@ -21,5 +21,7 @@ class KotzCSVRow(StandardCSVRow):
         self.species = "UNK" if pd.isnull(self.species) else species_map[self.species]
         if self.species == 'falsepositive':
             self.age_class = None
-        self.image_eo = os.path.basename(self.image_eo)
-        self.image_ir = os.path.basename(self.image_ir)
+        if not pd.isna(self.image_eo):
+            self.image_eo = os.path.basename(self.image_eo)
+        if not pd.isna(self.image_ir):
+            self.image_ir = os.path.basename(self.image_ir)

@@ -143,6 +143,7 @@ def add_all(flight_datasets):
     s = Session()
     if not os.path.exists(log_file_base):
         os.makedirs(log_file_base)
+    flight_datasets = [fl04_dets]
     # flight_datasets = [fl07_dets, fl06_dets, fl05_dets, fl04_dets]
     for cam_data in flight_datasets:
         with mlflow.start_run(run_name='import_labels') as mlrun:
@@ -183,4 +184,4 @@ def drop_create_label_schemas():
 
 
 # drop_create_label_schemas()
-add_all([[fl07_L]])
+add_all([[fl07_L, fl07_C], [fl06_L, fl06_C], [fl05_C, fl05_L], [fl04_C, fl04_L]])#)

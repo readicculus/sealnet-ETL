@@ -79,7 +79,8 @@ class CHESSDataset(StandardFlightDataset):
         return []
 
     def get_cam_ir_images(self, cam_name):
-        return []
+        ir_files = glob.glob(os.path.join(self.ir_dir, '*_%s_%s_*_THERM-16-BIT.PNG' % (self.flight, cam_name)))
+        return ir_files
 
     def get_cam_eo_images(self, cam_name):
         eo_files = glob.glob(os.path.join(self.color_dir, '*_%s_%s_*_COLOR-8-BIT.JPG' % (self.flight, cam_name)))
@@ -88,7 +89,7 @@ class CHESSDataset(StandardFlightDataset):
     def ext_id(self, ext):
         if ext == '.JPG':
             return 'eo'
-        if ext == '.tif':
+        if ext == '.PNG':
             return 'ir'
         if ext == '.json':
             return 'meta'

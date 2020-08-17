@@ -9,6 +9,8 @@ class ModalityTransform():
         self.h = H
         self.mode = mode
 
+
+
     def transform_ir_to_eo(self, im_ir, im_eo):
         H = None
         if self.mode == TransformMode.IRTOEO:

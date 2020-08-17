@@ -6,7 +6,7 @@ import mlflow
 from import_project import log_file_base
 from import_project.imports import experiment
 from import_project.imports.Kotz.KotzDataset import fl04_dataset, fl06_dataset, fl07_dataset, fl05_dataset
-from import_project.imports.deletions import delete_cam_images
+from import_project.imports.deletions import delete_cam_images, delete_cam_labels
 from import_project.utils.util import printProgressBar
 from import_project.utils.ingest_util import setup_logger, append_meta
 from noaadb import Session
@@ -74,6 +74,7 @@ def import_images(dataset):
             setup_logger(lf)
             if delete_first:
                 with mlflow.start_run(run_name='delete_cam', nested=True):
+                    delete_cam_labels(s, dataset, cam, SURVEY)
                     delete_cam_images(dataset, cam, SURVEY)
             with mlflow.start_run(run_name='import_cam', nested=True):
                 print("Cam %s" % cam)
@@ -87,6 +88,8 @@ def import_images(dataset):
     s.close()
 
 if __name__ == '__main__':
-    datasets = [fl05_dataset, fl04_dataset, fl07_dataset, fl06_dataset]  # , fl01_dataset]
+    # datasets = [fl05_dataset, fl04_dataset, fl07_dataset, fl06_dataset]  # , fl01_dataset]
+    # datasets = [fl06_dataset]  # , fl01_dataset]
+    datasets = [fl04_dataset]
     for dataset in datasets:
         import_images(dataset)

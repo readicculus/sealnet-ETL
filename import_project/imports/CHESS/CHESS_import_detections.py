@@ -15,7 +15,7 @@ from noaadb import Session
 from noaadb.schema.utils.queries import add_worker_if_not_exists, add_job_if_not_exists
 from thebook.s3.S3Url import S3Url
 from thebook.s3.func import read_csv
-s3_url=S3Url('s3://yboss/mlflow/0/e219de98e9ca4dc2bb41bbaf5de7b717/artifacts/TrainingAnimals_WithSightings_updating_standardized_eo.csv')
+s3_url=S3Url('s3://yboss/mlflow/0/6b66b2ce9aa0434fb8471424c056a77b/artifacts/TrainingAnimals_WithSightings_updating_standardized_eo.csv')
 s3_client = boto3.client('s3')
 df = read_csv(s3_client, s3_url)
 df['hs_id'] = df['hs_id'].astype(str)
@@ -46,14 +46,19 @@ def add_all():
     if not os.path.exists(log_file_base):
         os.makedirs(log_file_base)
     for flight in flights:
+        dataset = CHESSDataset(color_dir, ir_dir, flight, eo_df=df)
+        num = len(dataset.eo_df.index)
+        if num == 0:
+            print("Skipping %s 0 detections" % flight)
+            continue
         with mlflow.start_run(run_name='import_labels', experiment_id=experiment.experiment_id) as mlrun:
-            dataset = CHESSDataset(color_dir, ir_dir, flight, eo_df=df)
             # set flight params
             mlflow.log_param('flight', flight)
             cams = dataset.get_cam_names()
             flight_eo_added_count = 0
             flight_ir_added_count = 0
             for cam in cams:
+                print("%s_%s"%(flight, cam))
                 # setup logger
                 fl_cam = (flight, cam)
                 lf = os.path.join(log_file_base, 'detections_%s%s.log' % fl_cam)
@@ -64,20 +69,20 @@ def add_all():
                     delete_cam_labels(s, dataset, cam, SURVEY)
 
                 # import labels run
-                with mlflow.start_run(run_name='import_labels', nested=True, experiment_id=experiment.experiment_id):
-                    labels = parse_rows(dataset.get_cam_eo_detections(cam))
-                    eo_added, ir_added = process_labels(s, labels, job, eo_worker, None)
-                    flight_eo_added_count += eo_added
-                    flight_ir_added_count += ir_added
-                    mlflow.log_artifact(lf) # log the log file to the run
+                labels = parse_rows(dataset.get_cam_eo_detections(cam))
+                if len(labels) > 0:
+                    with mlflow.start_run(run_name='import_labels', nested=True, experiment_id=experiment.experiment_id):
+                        eo_added, ir_added = process_labels(s, labels, job, eo_worker, None)
+                        flight_eo_added_count += eo_added
+                        flight_ir_added_count += ir_added
+                        mlflow.log_artifact(lf) # log the log file to the run
 
                 mlflow.log_metric('eo_labels', flight_eo_added_count)
                 mlflow.log_metric('ir_labels', flight_ir_added_count)
                 # delete log file
                 if os.path.exists(lf):
                     os.remove(lf)
-    if not os.path.exists(log_file_base):
-        os.makedirs(log_file_base)
+
     s.close()
 
 add_all()

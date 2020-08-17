@@ -50,6 +50,8 @@ def is_new_label(status): return "new" in status
 def is_bad_res(status): return "bad_res" in status
 def is_maybe_seal(status): return "maybe_seal" in status
 def is_off_edge(status): return "off_edge" in status
+def is_shadow(pb_id): return pb_id is not None and pb_id[-1] == "s"
+
 def find_image(dirs, name):
     for dir in dirs:
         im_path = os.path.join(dir, name).strip()
@@ -126,7 +128,7 @@ with mlflow.start_run(run_name='standardize_chess_csv', experiment_id=experiment
         if ir_image_name is not None and ir_path is None:
             print("Not found IR!", ir_image_name)
 
-        if removed or bas_res:
+        if removed or bas_res or not updated or is_shadow(hotspot_id):
             continue
 
         if rgb_path:
