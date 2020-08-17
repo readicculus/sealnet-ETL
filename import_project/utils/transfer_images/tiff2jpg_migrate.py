@@ -6,19 +6,20 @@ from shutil import copyfile
 import sys
 import logging
 class MigrateHelper():
-    def __init__(self, rootdir, newroot, ignore_paths, log_file, pkl_file):
+    def __init__(self, rootdir, newroot, ignore_paths, log_file, pkl_file, swap_LR = False):
         self.rootdir=rootdir
         self.newroot=newroot
         self.ignore_paths=ignore_paths
         self.log_file=log_file
         self.pkl_file=pkl_file
+        self.swap_LR = swap_LR
 
 # TODO
-fl07_C_L = MigrateHelper('/media/yuval/BASHFUL/fl07/',
-              '/data2/2019/fl07/',
-              ['RGHT'],
-              '/data2/2019/fl07_C_L.log',
-              '/data2/2019/fl07_C_L.pkl')
+# fl07_C_L = MigrateHelper('/media/yuval/BASHFUL/fl07/',
+#               '/data2/2019/fl07/',
+#               ['RGHT'],
+#               '/data2/2019/fl07_C_L.log',
+#               '/data2/2019/fl07_C_L.pkl')
 
 
 # fl06_R = MigrateHelper('/media/yuval/BASHFUL/fl06/',
@@ -40,12 +41,12 @@ fl07_C_L = MigrateHelper('/media/yuval/BASHFUL/fl07/',
 #               '/data2/2019/fl05_C_L_R.log',
 #               '/data2/2019/fl05_C_L_R.pkl')
 # #fl04
-# fl04_C_L_R = MigrateHelper('/media/yuval/DOC/fl04/',
-#               '/data2/2019/fl04/',
-#               [],
-#               '/data2/2019/fl04_C_L_R.log',
-#               '/data2/2019/fl04_C_L_R.pkl')
-drive_DOC = [fl07_C_L]
+fl04_C_L_R = MigrateHelper('/media/yuval/DOC/fl04/',
+              '/data2/2019/fl04/',
+              [],
+              '/data2/2019/fl04_C_L_R.log',
+              '/data2/2019/fl04_C_L_R.pkl', swap_LR=True)
+drive_DOC = [fl04_C_L_R]
 
 
 def copy_file(src, dst):
@@ -105,9 +106,20 @@ for flight in drive_DOC:
                         base = '.'.join(newloc.split('.')[:-1])
                         newloc = base+".jpg"
                 folder_src_dst_map[folder][oldloc] = {'dst':newloc,'complete':False}
+                if flight.swap_LR:
+                    dst = folder_src_dst_map[folder][oldloc]['dst']
+                    if 'RGHT' in dst:
+                        dst = dst.replace('RGHT', 'LEFT')
+                        dst = dst.replace('_R_', '_L_')
+                    elif 'LEFT' in dst:
+                        dst = dst.replace('LEFT', 'RIGHT')
+                        dst = dst.replace('_L_', '_R_')
+                    folder_src_dst_map[folder][oldloc]['dst'] = dst
     i = 0
     print(folder_src_dst_map.keys())
     for folder in folder_src_dst_map:
+        if folder == 'LEFT' or folder == "CENT":
+            continue
         total_size = num_files = compressed = 0
         newdir = os.path.join(newroot, folder)
         if not os.path.exists(newdir):
