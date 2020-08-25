@@ -22,7 +22,10 @@ def image_fn_parser(im):
     cam = name_parts[start_idx + 1]
     day = name_parts[start_idx + 2]
     time = name_parts[start_idx + 3]
-    ts = datetime.strptime(day, "%Y%m%d").timestamp() + float(time)
+    ms = time.split('.')[1]
+    time = time.split('.')[0]
+    day_hr_ms = day+'_' + time
+    ts = datetime.strptime(day_hr_ms, "%Y%m%d_%H%M%S").timestamp() + float('.'+ms)
     timestamp = datetime.fromtimestamp(ts)
     # timestamp = parse_timestamp(day + time + "GMT")
     return flight, cam, timestamp

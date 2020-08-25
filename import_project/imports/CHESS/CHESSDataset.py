@@ -63,8 +63,8 @@ class CHESSDataset(StandardFlightDataset):
         return cam_only
 
     def get_cam_ir_detections(self, cam_name):
-        raise NotImplementedError('get_cam_ir_detections not implemented for CHESS')
-        return None
+        cam_only = self.ir_df[self.ir_df.image_ir.str.contains('_%s_' % cam_name)]
+        return cam_only
 
     def id(self):
         return self.flight

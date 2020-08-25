@@ -17,16 +17,22 @@ from thebook.s3.S3Url import S3Url
 from thebook.s3.func import read_csv
 s3_url=S3Url('s3://yboss/mlflow/0/6b66b2ce9aa0434fb8471424c056a77b/artifacts/TrainingAnimals_WithSightings_updating_standardized_eo.csv')
 s3_client = boto3.client('s3')
-df = read_csv(s3_client, s3_url)
-df['hs_id'] = df['hs_id'].astype(str)
+df_eo = read_csv(s3_client, s3_url)
 
-def parse_rows(detections):
+df_eo['hs_id'] = df_eo['hs_id'].astype(str)
+
+s3_url=S3Url('s3://yboss/mlflow/0/6b66b2ce9aa0434fb8471424c056a77b/artifacts/TrainingAnimals_WithSightings_updating_standardized_ir.csv')
+s3_client = boto3.client('s3')
+df_ir = read_csv(s3_client, s3_url)
+
+def parse_rows(eo_detections, ir_detections):
     rows = []
-    for i, row in detections.iterrows():
+    joined_eo_ir = eo_detections.set_index('id_eo').join(ir_detections.set_index('id_ir'))
+    for i, row in joined_eo_ir.iterrows():
         kotz_row = ChessCSVRow(row["species_eo"],
-                               row["image_eo"], None,
+                               row["image_eo"], row["image_ir"],
                                row["x1_eo"], row["x2_eo"], row["y1_eo"], row["y2_eo"],
-                               None, None, None, None,
+                               row["x1_ir"], row["x2_ir"], row["y1_ir"], row["y2_ir"],
                                row["confidence_eo"], None, hs_id=row['hs_id_eo'])
         rows.append(kotz_row)
     return rows
@@ -46,7 +52,7 @@ def add_all():
     if not os.path.exists(log_file_base):
         os.makedirs(log_file_base)
     for flight in flights:
-        dataset = CHESSDataset(color_dir, ir_dir, flight, eo_df=df)
+        dataset = CHESSDataset(color_dir, ir_dir, flight, eo_df=df_eo, ir_df=df_ir)
         num = len(dataset.eo_df.index)
         if num == 0:
             print("Skipping %s 0 detections" % flight)
@@ -69,10 +75,10 @@ def add_all():
                     delete_cam_labels(s, dataset, cam, SURVEY)
 
                 # import labels run
-                labels = parse_rows(dataset.get_cam_eo_detections(cam))
+                labels = parse_rows(dataset.get_cam_eo_detections(cam), dataset.get_cam_ir_detections(cam))
                 if len(labels) > 0:
                     with mlflow.start_run(run_name='import_labels', nested=True, experiment_id=experiment.experiment_id):
-                        eo_added, ir_added = process_labels(s, labels, job, eo_worker, None)
+                        eo_added, ir_added = process_labels(s, labels, job, eo_worker, eo_worker)
                         flight_eo_added_count += eo_added
                         flight_ir_added_count += ir_added
                         mlflow.log_artifact(lf) # log the log file to the run
