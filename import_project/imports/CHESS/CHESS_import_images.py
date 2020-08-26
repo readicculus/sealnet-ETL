@@ -7,7 +7,7 @@ from import_project import log_file_base
 from import_project.imports import experiment
 from import_project.imports.CHESS import SURVEY
 from import_project.imports.CHESS.CHESSDataset import chess_datasets
-from import_project.imports.deletions import delete_cam_images
+from import_project.imports.deletions import delete_cam_images, delete_cam_labels
 from import_project.utils.ingest_util import setup_logger, append_meta
 from noaadb import Session
 from noaadb.schema.utils.queries import add_or_get_cam_flight_survey
@@ -74,12 +74,14 @@ def import_images(dataset):
         eo_total = 0
         ir_total = 0
         for cam in cams:
+            # if cam =='P': continue
             lf = os.path.join(log_file_base, 'ingest_imagery_%s%s.log' % (dataset.id(), cam))
             setup_logger(lf)
             if delete_first:
                 with mlflow.start_run(run_name='delete_cam', nested=True) as del_run:
                     # print('runId %s' % del_run.info.run_id)
                     # print('parent %s' % mlflow.get_run(del_run.info.run_id).data.tags['mlflow.parentRunId'])
+                    delete_cam_labels(s, dataset, cam, SURVEY)
                     delete_cam_images(dataset, cam, SURVEY)
             with mlflow.start_run(run_name='import_cam', nested=True) as import_run:
                 print("Cam %s" % cam)

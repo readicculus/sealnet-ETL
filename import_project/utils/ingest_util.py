@@ -11,8 +11,7 @@ from import_project.utils.util import parse_timestamp
 
 
 
-def image_fn_parser(im):
-    file_name = os.path.basename(im)
+def parse_kotz(file_name):
     name_parts = file_name.split('_')
     start_idx = 3
     # fl01 images have slightly  different names
@@ -24,11 +23,47 @@ def image_fn_parser(im):
     time = name_parts[start_idx + 3]
     ms = time.split('.')[1]
     time = time.split('.')[0]
-    day_hr_ms = day+'_' + time
-    ts = datetime.strptime(day_hr_ms, "%Y%m%d_%H%M%S").timestamp() + float('.'+ms)
+    day_hr_ms = day + '_' + time
+    ts = datetime.strptime(day_hr_ms, "%Y%m%d_%H%M%S").timestamp() + float('.' + ms)
     timestamp = datetime.fromtimestamp(ts)
-    # timestamp = parse_timestamp(day + time + "GMT")
     return flight, cam, timestamp
+
+def parse_chess_fn(file_name):
+    name_parts = file_name.split('_')
+    if name_parts[0] == 'CHESS':
+        start_idx = 1
+
+        flight = name_parts[start_idx]
+        cam = name_parts[start_idx + 1]
+        t = name_parts[start_idx + 2]
+        t2 = name_parts[start_idx + 3]
+        ms = t2.split('.')[1]
+        date = t2.split('.')[0]
+        ts = datetime.strptime(t+date, "%y%m%d%H%M%S").timestamp() + float('.' + ms)
+        timestamp = datetime.fromtimestamp(ts)
+    else:
+        start_idx = 3
+        # fl01 images have slightly  different names
+        if name_parts[2] != '2019':
+            start_idx = 2
+        flight = name_parts[start_idx]
+        cam = name_parts[start_idx + 1]
+        t = name_parts[start_idx + 3]
+        ms = t.split('.')[1].replace('GMT', '')
+        date = t.split('.')[0]
+        ts = datetime.strptime(date, "%Y%m%d%H%M%S").timestamp() + float('.' + ms)
+        timestamp = datetime.fromtimestamp(ts)
+    return flight, cam, timestamp
+
+def image_fn_parser(im):
+    file_name = os.path.basename(im)
+    if 'CHESS' in file_name:
+        return parse_chess_fn(file_name)
+    else:
+        return parse_kotz(file_name)
+
+    # timestamp = parse_timestamp(day + time + "GMT")
+    return None
 
 def safe_float_cast(s):
     if s is None: return None
