@@ -1,3 +1,0 @@
-[submodule "noaadb"]
-	path = noaadb
-	url = git@github.com:readicculus/noaadb.git
